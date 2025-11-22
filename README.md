@@ -366,6 +366,10 @@ Use [webhook.site](https://webhook.site) to get a test webhook URL.
 - `morpho_borrow` - Morpho market borrow events (market_id, caller, onBehalf, receiver, assets, shares)
 - `morpho_repay` - Morpho market repay events (market_id, caller, onBehalf, assets, shares)
 
+**Morpho Blue Contract:** `0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb` (same address on Ethereum and Base)
+
+**Note:** The indexer is configured to ONLY capture Morpho events from this specific contract address to save bandwidth.
+
 ### ERC4626 Vault Events
 - `erc4626_deposit` - ERC4626 vault deposits (sender, owner, assets, shares)
 - `erc4626_withdraw` - ERC4626 vault withdrawals (sender, receiver, owner, assets, shares)

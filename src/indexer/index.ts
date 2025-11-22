@@ -46,6 +46,7 @@ async function main() {
   const startBlock = Math.max(1, headBlock - config.indexer.maxLookbackBlocks);
 
   console.log(`[${timestamp()}] INFO: Indexer starting | chain=${chainName} blocks=${startBlock.toLocaleString()}-${headBlock.toLocaleString()} events=ERC20+ERC4626+Morpho`);
+  console.log(`[${timestamp()}] INFO: Morpho contract: ${chainConfig.morphoAddress}`);
 
   const queryBuilder = new EvmQueryBuilder()
     .addFields({
@@ -79,30 +80,34 @@ async function main() {
       },
       range: { from: startBlock },
     })
-    // Morpho Supply events
+    // Morpho Supply events (filtered by Morpho contract address)
     .addLog({
       request: {
+        address: [chainConfig.morphoAddress],
         topic0: [morphoAbi.Supply.topic],
       },
       range: { from: startBlock },
     })
-    // Morpho Withdraw events
+    // Morpho Withdraw events (filtered by Morpho contract address)
     .addLog({
       request: {
+        address: [chainConfig.morphoAddress],
         topic0: [morphoAbi.Withdraw.topic],
       },
       range: { from: startBlock },
     })
-    // Morpho Borrow events
+    // Morpho Borrow events (filtered by Morpho contract address)
     .addLog({
       request: {
+        address: [chainConfig.morphoAddress],
         topic0: [morphoAbi.Borrow.topic],
       },
       range: { from: startBlock },
     })
-    // Morpho Repay events
+    // Morpho Repay events (filtered by Morpho contract address)
     .addLog({
       request: {
+        address: [chainConfig.morphoAddress],
         topic0: [morphoAbi.Repay.topic],
       },
       range: { from: startBlock },
