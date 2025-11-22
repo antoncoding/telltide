@@ -18,7 +18,8 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:insert-subs": "tsx src/db/insert-subscriptions.ts",
     "db:clean": "tsx src/db/clean-db.ts",
-    "db:clean-subs": "tsx src/db/clean-subscriptions.ts"
+    "db:clean-subs": "tsx src/db/clean-subscriptions.ts",
+    "db:debug": "tsx src/db/debug-detection.ts"
   },
   "keywords": [
     "blockchain",

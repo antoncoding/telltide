@@ -67,7 +67,7 @@ export const eventsRepository = {
       const params = batch.flatMap((e) => [
         e.chain ?? 'ethereum',
         e.block_number,
-        e.timestamp,
+        e.timestamp instanceof Date ? e.timestamp.toISOString() : e.timestamp,
         e.event_type,
         e.contract_address,
         e.from_address,
