@@ -6,6 +6,7 @@ export type ChainConfig = {
   name: string;
   rpcUrl: string;
   sqdPortalUrl: string;
+  morphoAddress: string; // Morpho Blue contract address
 };
 
 export type Config = {
@@ -49,11 +50,13 @@ export const config: Config = {
       name: 'ethereum',
       rpcUrl: process.env.ETHEREUM_RPC_URL ?? 'https://eth.llamarpc.com',
       sqdPortalUrl: 'https://portal.sqd.dev/datasets/ethereum-mainnet',
+      morphoAddress: '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb',
     },
     base: {
       name: 'base',
       rpcUrl: process.env.BASE_RPC_URL ?? 'https://mainnet.base.org',
       sqdPortalUrl: 'https://portal.sqd.dev/datasets/base-mainnet',
+      morphoAddress: '0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb',
     },
   },
   indexer: {

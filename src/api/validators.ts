@@ -1,23 +1,34 @@
 import { z } from 'zod';
 
-const eventTypeSchema = z.enum(['erc20_transfer', 'erc4626_deposit', 'erc4626_withdraw']);
+const eventTypeSchema = z.enum([
+  'erc20_transfer',
+  'erc4626_deposit',
+  'erc4626_withdraw',
+  'morpho_supply',
+  'morpho_withdraw',
+  'morpho_borrow',
+  'morpho_repay',
+]);
 
 const comparisonOperatorSchema = z.enum(['>', '<', '>=', '<=', '=', '!=']);
 
 const aggregationTypeSchema = z.enum(['sum', 'avg', 'count', 'min', 'max']);
 
 const metaEventConfigSchema = z.object({
-  type: z.enum(['rolling_aggregate', 'event_count']),
+  type: z.enum(['rolling_aggregate', 'event_count', 'net_aggregate']),
   event_type: eventTypeSchema,
   chain: z.enum(['ethereum', 'base']).optional(),
   contracts: z.array(z.string().regex(/^0x[a-fA-F0-9]{40}$/)).optional(),
   contract_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  market_id: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(), // bytes32 hex string
   from_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   to_address: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   window: z.string().regex(/^\d+(m|h|d)$/),
   lookback_blocks: z.number().int().positive().optional(),
   aggregation: aggregationTypeSchema.optional(),
   field: z.string().optional(),
+  positive_event_type: eventTypeSchema.optional(), // For net_aggregate
+  negative_event_type: eventTypeSchema.optional(), // For net_aggregate
   condition: z.object({
     operator: comparisonOperatorSchema,
     value: z.union([z.number(), z.string()]),

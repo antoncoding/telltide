@@ -135,7 +135,8 @@ export const eventsRepository = {
     fromAddress?: string,
     toAddress?: string,
     lookbackBlocks?: number,
-    chain?: string
+    chain?: string,
+    marketId?: string
   ): Promise<number> {
     let whereClause: string;
     const params: unknown[] = [eventType];
@@ -183,6 +184,11 @@ export const eventsRepository = {
     if (toAddress) {
       whereClause += ` AND to_address = $${params.length + 1}`;
       params.push(toAddress.toLowerCase());
+    }
+
+    if (marketId) {
+      whereClause += ` AND data->>'market_id' = $${params.length + 1}`;
+      params.push(marketId);
     }
 
     const result = await query<{ count: string }>(
@@ -203,7 +209,8 @@ export const eventsRepository = {
     fromAddress?: string,
     toAddress?: string,
     lookbackBlocks?: number,
-    chain?: string
+    chain?: string,
+    marketId?: string
   ): Promise<number> {
     let whereClause: string;
     const params: unknown[] = [eventType];
@@ -253,6 +260,11 @@ export const eventsRepository = {
       params.push(toAddress.toLowerCase());
     }
 
+    if (marketId) {
+      whereClause += ` AND data->>'market_id' = $${params.length + 1}`;
+      params.push(marketId);
+    }
+
     const aggFunc = aggregation.toUpperCase();
     const result = await query<{ value: string | null }>(
       `SELECT ${aggFunc}((data->>'${field}')::numeric) as value
@@ -262,6 +274,54 @@ export const eventsRepository = {
     );
 
     return result.rows[0].value ? parseFloat(result.rows[0].value) : 0;
+  },
+
+  async getNetAggregatedValue(
+    positiveEventType: EventType,
+    negativeEventType: EventType,
+    field: string,
+    aggregation: Exclude<AggregationType, 'count'>,
+    windowMinutes: number,
+    contracts?: string[],
+    contractAddress?: string,
+    fromAddress?: string,
+    toAddress?: string,
+    lookbackBlocks?: number,
+    chain?: string,
+    marketId?: string
+  ): Promise<number> {
+    // Get aggregated value for positive events (e.g., supply, borrow)
+    const positiveValue = await this.getAggregatedValue(
+      positiveEventType,
+      field,
+      aggregation,
+      windowMinutes,
+      contracts,
+      contractAddress,
+      fromAddress,
+      toAddress,
+      lookbackBlocks,
+      chain,
+      marketId
+    );
+
+    // Get aggregated value for negative events (e.g., withdraw, repay)
+    const negativeValue = await this.getAggregatedValue(
+      negativeEventType,
+      field,
+      aggregation,
+      windowMinutes,
+      contracts,
+      contractAddress,
+      fromAddress,
+      toAddress,
+      lookbackBlocks,
+      chain,
+      marketId
+    );
+
+    // Return net value: positive - negative
+    return positiveValue - negativeValue;
   },
 
   async deleteEventsAfterBlock(blockNumber: number): Promise<void> {

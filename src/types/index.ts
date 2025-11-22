@@ -1,5 +1,12 @@
 // Event Types
-export type EventType = 'erc20_transfer' | 'erc4626_deposit' | 'erc4626_withdraw';
+export type EventType =
+  | 'erc20_transfer'
+  | 'erc4626_deposit'
+  | 'erc4626_withdraw'
+  | 'morpho_supply'
+  | 'morpho_withdraw'
+  | 'morpho_borrow'
+  | 'morpho_repay';
 
 // Database Models
 export type Event = {
@@ -17,7 +24,7 @@ export type Event = {
   created_at: Date;
 };
 
-export type MetaEventConditionType = 'rolling_aggregate' | 'event_count';
+export type MetaEventConditionType = 'rolling_aggregate' | 'event_count' | 'net_aggregate';
 
 export type AggregationType = 'sum' | 'avg' | 'count' | 'min' | 'max';
 
@@ -30,12 +37,16 @@ export type MetaEventConfig = {
   chain?: string; // ethereum, base, etc. (defaults to ethereum)
   contracts?: string[]; // Multiple contracts to check (OR logic)
   contract_address?: string; // Single contract (backwards compat)
+  market_id?: string; // For Morpho markets: filter by market ID (bytes32)
   from_address?: string; // For ERC20 transfers from specific address
   to_address?: string; // For ERC20 transfers to specific address
   window: string; // e.g., "1h", "15m", "24h"
   lookback_blocks?: number; // Optional: How many blocks back to look (overrides time-based lookback)
   aggregation?: AggregationType;
   field?: string;
+  // For net_aggregate type: calculate difference between two event types
+  positive_event_type?: EventType; // e.g., morpho_supply, morpho_borrow
+  negative_event_type?: EventType; // e.g., morpho_withdraw, morpho_repay
   condition: {
     operator: ComparisonOperator;
     value: number | string; // Absolute value only

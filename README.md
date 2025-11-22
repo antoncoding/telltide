@@ -18,38 +18,36 @@
 
 ## What is TellTide?
 
-TellTide monitors ERC20 transfers and ERC4626 vault events (deposits/withdrawals) across **Ethereum and Base** and alerts you when **aggregated conditions** are met. Instead of tracking individual transactions, subscribe to meaningful signals like:
+TellTide monitors **Morpho Markets** and **ERC4626 vaults** across **Ethereum and Base** and alerts you when **aggregated conditions** are met. Instead of tracking individual transactions, subscribe to meaningful signals like:
 
-- 🚨 "Alert when total withdrawals from any of these 3 vaults exceed 1M USDC in 2 hours"
-- 📊 "Notify when more than 50 USDC transfers occur in 15 minutes"
-- 🔔 "Trigger when Base vault has high deposit activity in last 300 blocks"
-- 🐋 "Track whale movements across Ethereum mainnet"
+- 🚨 "Alert when net withdrawals from Morpho markets exceed 1M USDC in 1 hour" (supply - withdraw)
+- 📊 "Notify when net borrows across 4 markets exceed $500K in 30 minutes" (borrow - repay)
+- 🔔 "Trigger when specific Morpho market has net supply drop below -100K USDC"
+- 🐋 "Track whale activity: alert when net withdrawals from vault exceed threshold"
+- ⚡ "Monitor market liquidity: detect when net borrows spike in short timeframes"
 
-Perfect for monitoring DeFi protocols, tracking whale movements, and detecting unusual on-chain activity.
+Perfect for monitoring DeFi protocols, tracking market flows, and detecting unusual on-chain activity in Morpho and ERC4626 vaults.
 
 ## Key Features
 
-- ⚡ **Real-time Indexing** - Uses SQD Pipes SDK to index ERC20 and ERC4626 events
-- 🌐 **Multi-Chain Support** - Ethereum Mainnet + Base Mainnet
-- 🎯 **Meta-Event Detection** - Create conditions on rolling time windows with aggregations (sum, avg, count, etc.)
-- 📦 **Block-Based Lookback** - Efficient queries using recent blocks instead of time windows
+- ⚡ **Real-time Indexing** - Uses SQD Pipes SDK to index Morpho market events and ERC4626 vault events
+- 🎯 **Net Flow Detection** - Track net supply/withdraw and net borrow/repay across markets and vaults
+- 📊 **Meta-Event Detection** - Create conditions on rolling time windows with aggregations (sum, avg, count, etc.)
 - 🔗 **Webhook Notifications** - Automatic HTTP POST to your endpoint with retry logic
-- ⏱️ **Cooldown Control** - Per-subscription cooldown periods to prevent notification spam
-- 🗃️ **PostgreSQL Storage** - Efficient event storage with time-based queries
-- 🔧 **Simple REST API** - Easy subscription management
+- 🏦 **Multi-Market Support** - Monitor multiple Morpho markets and vaults simultaneously
 
 ## Architecture
 
 ```
-Ethereum + Base Blockchains (ERC20 + ERC4626)
+Ethereum + Base Blockchains (Morpho Markets + ERC4626 Vaults)
          ↓
     SQD Portal API (fast historical data)
          ↓
-  TellTide Indexer (dynamic lookback)
+  TellTide Indexer (Morpho + ERC4626 events)
          ↓
-    PostgreSQL Database (chain-tagged events)
+    PostgreSQL Database (events with market_id)
          ↓
-  Detection Worker (checks every 30s)
+  Detection Worker (net flow calculations every 30s)
          ↓
    Your Webhook URL 🎯
 ```
@@ -120,107 +118,149 @@ pnpm db:insert-subs
 
 ### Create a Subscription
 
+**Example 1: Net Withdrawal Alert for Morpho Market**
+
 ```bash
 curl -X POST http://localhost:3000/api/subscriptions \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "alice",
-    "name": "High Vault Withdrawal Alert",
+    "name": "Morpho Market Net Withdrawal Alert",
     "webhook_url": "https://webhook.site/your-unique-url",
     "cooldown_minutes": 5,
     "meta_event_config": {
       "chain": "ethereum",
-      "type": "rolling_aggregate",
-      "event_type": "erc4626_withdraw",
-      "contracts": [
-        "0xVaultA...",
-        "0xVaultB...",
-        "0xVaultC..."
-      ],
-      "window": "2h",
+      "type": "net_aggregate",
+      "event_type": "morpho_supply",
+      "positive_event_type": "morpho_supply",
+      "negative_event_type": "morpho_withdraw",
+      "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
+      "window": "1h",
       "aggregation": "sum",
       "field": "assets",
       "condition": {
-        "operator": ">",
-        "value": 1000000000000
+        "operator": "<",
+        "value": -1000000000000
       }
     }
   }'
 ```
 
-**This triggers when**: Any of the 3 vaults on Ethereum has total withdrawals exceeding 1M USDC (assuming 6 decimals) in the last 2 hours. Won't send another notification for 5 minutes after triggering.
+**This triggers when**: Net withdrawals (supply - withdraw) from the specific Morpho market exceed 1M USDC in 1 hour (negative value means more withdrawals than supply). Won't send another notification for 5 minutes after triggering.
+
+**Example 2: Net Borrow Alert Across Multiple Markets**
+
+```bash
+curl -X POST http://localhost:3000/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "bob",
+    "name": "High Net Borrow Alert",
+    "webhook_url": "https://webhook.site/your-unique-url",
+    "cooldown_minutes": 10,
+    "meta_event_config": {
+      "chain": "ethereum",
+      "type": "net_aggregate",
+      "event_type": "morpho_borrow",
+      "positive_event_type": "morpho_borrow",
+      "negative_event_type": "morpho_repay",
+      "contracts": [
+        "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"
+      ],
+      "window": "30m",
+      "aggregation": "sum",
+      "field": "assets",
+      "condition": {
+        "operator": ">",
+        "value": 500000000000
+      }
+    }
+  }'
+```
+
+**This triggers when**: Net borrows (borrow - repay) across the Morpho contract exceed 500K USDC in 30 minutes.
 
 ### Example Use Cases
 
-**1. Monitor ERC20 Transfer Spike on Ethereum**
+**1. Monitor Net Supply Drop in Morpho Market**
 ```json
 {
   "chain": "ethereum",
-  "type": "event_count",
-  "event_type": "erc20_transfer",
-  "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  "window": "15m",
+  "type": "net_aggregate",
+  "event_type": "morpho_supply",
+  "positive_event_type": "morpho_supply",
+  "negative_event_type": "morpho_withdraw",
+  "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
+  "window": "1h",
+  "aggregation": "sum",
+  "field": "assets",
   "condition": {
-    "operator": ">",
-    "value": 50
+    "operator": "<",
+    "value": -100000000000
   }
 }
 ```
-Triggers when USDC has more than 50 transfers in 15 minutes on Ethereum.
+Triggers when net supply (supply - withdraw) drops below -100K USDC in 1 hour for a specific Morpho market. Detects rapid liquidity exits.
 
-**2. Track Deposits to Specific Vault on Base**
+**2. Track Net Borrow Spike Across Multiple Morpho Markets**
 ```json
 {
-  "chain": "base",
-  "type": "rolling_aggregate",
-  "event_type": "erc4626_deposit",
-  "contract_address": "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
-  "window": "1h",
-  "lookback_blocks": 300,
+  "chain": "ethereum",
+  "type": "net_aggregate",
+  "event_type": "morpho_borrow",
+  "positive_event_type": "morpho_borrow",
+  "negative_event_type": "morpho_repay",
+  "contracts": ["0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"],
+  "window": "30m",
   "aggregation": "sum",
   "field": "assets",
   "condition": {
     "operator": ">",
-    "value": 10000000000
+    "value": 500000000000
   }
 }
 ```
-Triggers when total deposits exceed 10K tokens in 1 hour on Base. Uses last 300 blocks (~10 min on Base).
+Triggers when net borrows (borrow - repay) exceed 500K USDC in 30 minutes across all markets in the Morpho contract.
 
-**3. Monitor Withdrawals from ANY of Multiple Vaults**
+**3. Monitor Net Withdrawals from ERC4626 Vault**
 ```json
 {
   "chain": "ethereum",
-  "type": "rolling_aggregate",
-  "event_type": "erc4626_withdraw",
-  "contracts": ["0xVault1...", "0xVault2...", "0xVault3..."],
+  "type": "net_aggregate",
+  "event_type": "erc4626_deposit",
+  "positive_event_type": "erc4626_deposit",
+  "negative_event_type": "erc4626_withdraw",
+  "contract_address": "0xVaultAddress...",
   "window": "2h",
   "aggregation": "sum",
   "field": "assets",
   "condition": {
-    "operator": ">",
-    "value": 1000000000000
+    "operator": "<",
+    "value": -1000000000000
   }
 }
 ```
-Triggers when ANY of the 3 vaults exceeds 1M USDC withdrawn in 2 hours.
+Triggers when net deposits (deposits - withdrawals) drop below -1M USDC in 2 hours. Monitors vault outflows.
 
-**4. Use Block-Based Lookback for Efficiency (Base)**
+**4. Track High Supply Activity in Specific Morpho Market (Base)**
 ```json
 {
   "chain": "base",
-  "type": "event_count",
-  "event_type": "erc20_transfer",
-  "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  "window": "1m",
-  "lookback_blocks": 300,
+  "type": "rolling_aggregate",
+  "event_type": "morpho_supply",
+  "contract_address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
+  "market_id": "0x...",
+  "window": "15m",
+  "lookback_blocks": 450,
+  "aggregation": "sum",
+  "field": "assets",
   "condition": {
     "operator": ">",
-    "value": 5
+    "value": 100000000000
   }
 }
 ```
-Triggers when USDC has more than 5 transfers in the last 300 blocks on Base (~10 minutes with 2s blocks). Using `lookback_blocks` makes queries more efficient by scanning recent blocks instead of time ranges.
+Triggers when total supply to a Morpho market exceeds 100K USDC in last 450 blocks on Base (~15 minutes with 2s blocks). Using `lookback_blocks` makes queries more efficient.
 
 ### Webhook Payload
 
@@ -320,14 +360,24 @@ Use [webhook.site](https://webhook.site) to get a test webhook URL.
 
 ## 📋 Supported Event Types
 
-- `erc20_transfer` - ERC20 Transfer events (from, to, value)
+### Morpho Market Events
+- `morpho_supply` - Morpho market supply events (market_id, caller, onBehalf, assets, shares)
+- `morpho_withdraw` - Morpho market withdraw events (market_id, caller, onBehalf, receiver, assets, shares)
+- `morpho_borrow` - Morpho market borrow events (market_id, caller, onBehalf, receiver, assets, shares)
+- `morpho_repay` - Morpho market repay events (market_id, caller, onBehalf, assets, shares)
+
+### ERC4626 Vault Events
 - `erc4626_deposit` - ERC4626 vault deposits (sender, owner, assets, shares)
 - `erc4626_withdraw` - ERC4626 vault withdrawals (sender, receiver, owner, assets, shares)
+
+### ERC20 Events
+- `erc20_transfer` - ERC20 Transfer events (from, to, value)
 
 ## 🎯 Meta-Event Types
 
 - **`event_count`** - Count events in time window
 - **`rolling_aggregate`** - Aggregate field values (sum, avg, min, max) in time window
+- **`net_aggregate`** - Calculate net flow: positive events - negative events (e.g., supply - withdraw, borrow - repay)
 
 ## ⏱️ Time Windows
 

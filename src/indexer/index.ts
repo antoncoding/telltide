@@ -6,6 +6,7 @@ import { config } from '../config/index.js';
 import { eventsRepository } from '../db/repositories/events.js';
 import { testConnection } from '../db/client.js';
 import { events as erc4626Abi } from '../abi/erc4626.js';
+import { events as morphoAbi } from '../abi/morpho.js';
 import type { EventType } from '../types/index.js';
 
 const timestamp = () => new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
@@ -44,7 +45,7 @@ async function main() {
   // Calculate dynamic start block
   const startBlock = Math.max(1, headBlock - config.indexer.maxLookbackBlocks);
 
-  console.log(`[${timestamp()}] INFO: Indexer starting | chain=${chainName} blocks=${startBlock.toLocaleString()}-${headBlock.toLocaleString()} events=ERC20+ERC4626`);
+  console.log(`[${timestamp()}] INFO: Indexer starting | chain=${chainName} blocks=${startBlock.toLocaleString()}-${headBlock.toLocaleString()} events=ERC20+ERC4626+Morpho`);
 
   const queryBuilder = new EvmQueryBuilder()
     .addFields({
@@ -75,6 +76,34 @@ async function main() {
     .addLog({
       request: {
         topic0: [erc4626Abi.Withdraw.topic],
+      },
+      range: { from: startBlock },
+    })
+    // Morpho Supply events
+    .addLog({
+      request: {
+        topic0: [morphoAbi.Supply.topic],
+      },
+      range: { from: startBlock },
+    })
+    // Morpho Withdraw events
+    .addLog({
+      request: {
+        topic0: [morphoAbi.Withdraw.topic],
+      },
+      range: { from: startBlock },
+    })
+    // Morpho Borrow events
+    .addLog({
+      request: {
+        topic0: [morphoAbi.Borrow.topic],
+      },
+      range: { from: startBlock },
+    })
+    // Morpho Repay events
+    .addLog({
+      request: {
+        topic0: [morphoAbi.Repay.topic],
       },
       range: { from: startBlock },
     });
@@ -162,6 +191,68 @@ async function main() {
                   sender: decoded.sender,
                   receiver: decoded.receiver,
                   owner: decoded.owner,
+                  assets: decoded.assets.toString(),
+                  shares: decoded.shares.toString(),
+                };
+              } else if (topic0 === morphoAbi.Supply.topic) {
+                // Morpho Supply has 4 topics: signature + id + caller + onBehalf
+                if (log.topics.length !== 4) continue;
+
+                eventType = 'morpho_supply';
+                const decoded = morphoAbi.Supply.decode(log);
+                fromAddress = decoded.caller;
+                toAddress = decoded.onBehalf;
+                decodedData = {
+                  market_id: decoded.id,
+                  caller: decoded.caller,
+                  onBehalf: decoded.onBehalf,
+                  assets: decoded.assets.toString(),
+                  shares: decoded.shares.toString(),
+                };
+              } else if (topic0 === morphoAbi.Withdraw.topic) {
+                // Morpho Withdraw has 4 topics: signature + id + onBehalf + receiver
+                if (log.topics.length !== 4) continue;
+
+                eventType = 'morpho_withdraw';
+                const decoded = morphoAbi.Withdraw.decode(log);
+                fromAddress = decoded.onBehalf;
+                toAddress = decoded.receiver;
+                decodedData = {
+                  market_id: decoded.id,
+                  caller: decoded.caller,
+                  onBehalf: decoded.onBehalf,
+                  receiver: decoded.receiver,
+                  assets: decoded.assets.toString(),
+                  shares: decoded.shares.toString(),
+                };
+              } else if (topic0 === morphoAbi.Borrow.topic) {
+                // Morpho Borrow has 4 topics: signature + id + onBehalf + receiver
+                if (log.topics.length !== 4) continue;
+
+                eventType = 'morpho_borrow';
+                const decoded = morphoAbi.Borrow.decode(log);
+                fromAddress = decoded.onBehalf;
+                toAddress = decoded.receiver;
+                decodedData = {
+                  market_id: decoded.id,
+                  caller: decoded.caller,
+                  onBehalf: decoded.onBehalf,
+                  receiver: decoded.receiver,
+                  assets: decoded.assets.toString(),
+                  shares: decoded.shares.toString(),
+                };
+              } else if (topic0 === morphoAbi.Repay.topic) {
+                // Morpho Repay has 4 topics: signature + id + caller + onBehalf
+                if (log.topics.length !== 4) continue;
+
+                eventType = 'morpho_repay';
+                const decoded = morphoAbi.Repay.decode(log);
+                fromAddress = decoded.caller;
+                toAddress = decoded.onBehalf;
+                decodedData = {
+                  market_id: decoded.id,
+                  caller: decoded.caller,
+                  onBehalf: decoded.onBehalf,
                   assets: decoded.assets.toString(),
                   shares: decoded.shares.toString(),
                 };
