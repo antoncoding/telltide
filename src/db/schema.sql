@@ -4,6 +4,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Events table - stores recent blockchain events (rolling window)
 CREATE TABLE IF NOT EXISTS events (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  chain VARCHAR(20) NOT NULL DEFAULT 'ethereum', -- ethereum, base, etc.
   block_number BIGINT NOT NULL,
   timestamp TIMESTAMP NOT NULL,
   event_type VARCHAR(50) NOT NULL,
@@ -14,16 +15,17 @@ CREATE TABLE IF NOT EXISTS events (
   transaction_hash VARCHAR(66) NOT NULL,
   log_index INTEGER NOT NULL,
   created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(transaction_hash, log_index)
+  UNIQUE(chain, transaction_hash, log_index)
 );
 
 -- Create indexes for efficient querying
+CREATE INDEX IF NOT EXISTS idx_events_chain ON events(chain);
 CREATE INDEX IF NOT EXISTS idx_events_block_number ON events(block_number);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type);
 CREATE INDEX IF NOT EXISTS idx_events_contract_address ON events(contract_address);
 CREATE INDEX IF NOT EXISTS idx_events_from_address ON events(from_address) WHERE from_address IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_events_composite ON events(event_type, timestamp, contract_address);
+CREATE INDEX IF NOT EXISTS idx_events_composite ON events(chain, event_type, timestamp, contract_address);
 
 -- Subscriptions table
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -32,6 +34,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   name VARCHAR(255) NOT NULL,
   webhook_url TEXT NOT NULL,
   meta_event_config JSONB NOT NULL,
+  cooldown_minutes INTEGER DEFAULT 1, -- Minimum minutes between notifications
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()

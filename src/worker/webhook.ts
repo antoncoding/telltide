@@ -23,10 +23,6 @@ export class WebhookDispatcher {
 
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
-        console.log(
-          `📤 Sending webhook to ${webhookUrl} (attempt ${attempt + 1}/${this.maxRetries})`
-        );
-
         const response = await axios.post(webhookUrl, payload, {
           timeout: 10000,
           headers: {
@@ -38,25 +34,32 @@ export class WebhookDispatcher {
         lastStatus = response.status;
 
         if (response.status >= 200 && response.status < 300) {
-          console.log(`✅ Webhook delivered successfully (${response.status})`);
+          console.log(`   ✅ Webhook delivered (HTTP ${response.status})`);
           success = true;
           break;
         } else {
-          console.warn(`⚠️  Webhook returned non-2xx status: ${response.status}`);
+          console.warn(`   ⚠️  Non-2xx response: HTTP ${response.status}`);
         }
       } catch (error) {
         if (axios.isAxiosError(error)) {
           lastStatus = error.response?.status ?? 0;
-          console.error(
-            `❌ Webhook delivery failed (attempt ${attempt + 1}):`,
-            error.message
-          );
+
+          // Handle 404 specially - don't retry, it's a config issue
+          if (lastStatus === 404) {
+            console.error(`   ❌ Webhook failed: HTTP 404 Not Found`);
+            console.error(`   💡 Check your webhook URL: ${webhookUrl}`);
+            break; // Don't retry 404s
+          }
+
+          console.error(`   ❌ Webhook failed: ${error.message} (HTTP ${lastStatus || 'N/A'})`);
         } else {
-          console.error(`❌ Unexpected error sending webhook:`, error);
+          console.error(`   ❌ Unexpected error:`, error);
         }
 
-        // Wait before retry
-        if (attempt < this.maxRetries - 1) {
+        // Wait before retry (skip for 404)
+        if (attempt < this.maxRetries - 1 && lastStatus !== 404) {
+          const delaySeconds = (this.retryDelayMs * (attempt + 1)) / 1000;
+          console.log(`   ⏳ Retrying in ${delaySeconds}s...`);
           await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs * (attempt + 1)));
         }
       }

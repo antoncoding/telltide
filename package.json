@@ -12,9 +12,11 @@
     "api": "tsx src/api/index.ts",
     "worker": "tsx src/worker/index.ts",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:chain": "tsx src/db/migrate-chain.ts",
     "db:seed": "tsx src/db/seed.ts",
     "db:insert-subs": "tsx src/db/insert-subscriptions.ts",
-    "db:clean": "tsx src/db/clean-db.ts"
+    "db:clean": "tsx src/db/clean-db.ts",
+    "db:clean-subs": "tsx src/db/clean-subscriptions.ts"
   },
   "keywords": [
     "blockchain",

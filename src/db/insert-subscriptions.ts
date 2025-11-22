@@ -63,7 +63,27 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
       lookback_blocks: 100, // Only look back 100 blocks for efficiency
       condition: {
         operator: '>',
-        value: 5,
+        value: 50,
+      },
+    },
+  },
+
+  // Base Chain - Vault Withdrawal Volume Monitor
+  {
+    name: 'Base Vault Withdrawal Volume',
+    description: 'Alert when vault on Base has significant withdrawal volume',
+    config: {
+      chain: 'base',
+      type: 'rolling_aggregate',
+      event_type: 'erc4626_withdraw',
+      contract_address: '0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183', // Vault on Base
+      window: '1h',
+      lookback_blocks: 300, // ~10 minutes on Base (2s blocks)
+      aggregation: 'sum',
+      field: 'assets',
+      condition: {
+        operator: '>',
+        value: 1000000000, // 1000 tokens (assuming 6 decimals)
       },
     },
   },
@@ -85,6 +105,24 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   //     },
   //   },
   // },
+
+  // Base Chain - Vault Deposit Activity Monitor
+  {
+    name: 'Base Vault Deposit Activity',
+    description: 'Alert when vault on Base has deposit activity',
+    config: {
+      chain: 'base',
+      type: 'event_count',
+      event_type: 'erc4626_deposit',
+      contract_address: '0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183', // Vault on Base
+      window: '1h',
+      lookback_blocks: 300, // ~10 minutes on Base (2s blocks)
+      condition: {
+        operator: '>',
+        value: 5, // More than 5 deposits
+      },
+    },
+  },
 
   // // 5. Monitor average withdrawal size
   // {

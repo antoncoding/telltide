@@ -17,12 +17,16 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`💡 Fetching current blockchain head from RPC...`);
+  // Use ethereum chain for indexing (Base support coming soon)
+  const chainName = 'ethereum';
+  const chainConfig = config.chains.ethereum;
+
+  console.log(`💡 Fetching current blockchain head from RPC (${chainName})...`);
 
   // Fetch current head block via RPC
   let headBlock = 0;
   try {
-    const response = await axios.post(config.rpc.url, {
+    const response = await axios.post(chainConfig.rpcUrl, {
       jsonrpc: '2.0',
       method: 'eth_blockNumber',
       params: [],
@@ -86,7 +90,7 @@ async function main() {
     query: EvmQueryBuilder;
     cache?: ReturnType<typeof portalSqliteCache>;
   } = {
-    portal: config.sqd.portalUrl,
+    portal: chainConfig.sqdPortalUrl,
     query: queryBuilder,
   };
 
@@ -100,6 +104,7 @@ async function main() {
     write: async ({ logger, read }) => {
       for await (const { data } of read()) {
         const eventsToInsert: Array<{
+          chain: string;
           block_number: number;
           timestamp: Date;
           event_type: EventType;
@@ -173,6 +178,7 @@ async function main() {
 
             if (eventType) {
               eventsToInsert.push({
+                chain: chainName,
                 block_number: block.header.number,
                 timestamp: blockTimestamp,
                 event_type: eventType,

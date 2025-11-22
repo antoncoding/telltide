@@ -81,6 +81,7 @@ export class MetaEventDetector {
     windowMinutes: number
   ): Promise<DetectionResult> {
     const contracts = config.contracts ?? (config.contract_address ? [config.contract_address] : undefined);
+    const chain = config.chain ?? 'ethereum';
 
     // If multiple contracts, check each
     if (contracts && contracts.length > 1) {
@@ -92,10 +93,9 @@ export class MetaEventDetector {
           contract,
           config.from_address,
           config.to_address,
-          config.lookback_blocks
+          config.lookback_blocks,
+          chain
         );
-
-        console.log(`Counting evnet for contract ${contract.slice(0, 8)} --- ${count}`)
 
         const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
         const triggered = this.evaluateCondition(count, config.condition.operator, threshold);
@@ -126,7 +126,8 @@ export class MetaEventDetector {
       config.contract_address,
       config.from_address,
       config.to_address,
-      config.lookback_blocks
+      config.lookback_blocks,
+      chain
     );
 
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
@@ -155,6 +156,7 @@ export class MetaEventDetector {
     // Type assertion safe after count check above
     const aggregation = config.aggregation as Exclude<typeof config.aggregation, 'count'>;
     const contracts = config.contracts ?? (config.contract_address ? [config.contract_address] : undefined);
+    const chain = config.chain ?? 'ethereum';
 
     // If multiple contracts, check each
     if (contracts && contracts.length > 1) {
@@ -168,7 +170,8 @@ export class MetaEventDetector {
           contract,
           config.from_address,
           config.to_address,
-          config.lookback_blocks
+          config.lookback_blocks,
+          chain
         );
 
         const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
@@ -201,7 +204,8 @@ export class MetaEventDetector {
       config.contract_address,
       config.from_address,
       config.to_address,
-      config.lookback_blocks
+      config.lookback_blocks,
+      chain
     );
 
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;

@@ -5,6 +5,7 @@ export const eventsRepository = {
   async insertEvent(event: Omit<Event, 'id' | 'created_at'>): Promise<Event> {
     const result = await query<Event>(
       `INSERT INTO events (
+        chain,
         block_number,
         timestamp,
         event_type,
@@ -14,10 +15,11 @@ export const eventsRepository = {
         data,
         transaction_hash,
         log_index
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      ON CONFLICT (transaction_hash, log_index) DO NOTHING
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (chain, transaction_hash, log_index) DO NOTHING
       RETURNING *`,
       [
+        event.chain ?? 'ethereum',
         event.block_number,
         event.timestamp,
         event.event_type,
@@ -37,8 +39,7 @@ export const eventsRepository = {
     if (events.length === 0) return;
 
     // PostgreSQL has a limit of ~65535 parameters
-    // With 9 params per event, we can safely insert ~7000 events per batch
-    // But let's use 500 to be safe and avoid memory issues
+    // With 10 params per event (added chain), use 500 batch size to be safe
     const BATCH_SIZE = 500;
 
     for (let i = 0; i < events.length; i += BATCH_SIZE) {
@@ -47,11 +48,12 @@ export const eventsRepository = {
       const values = batch
         .map(
           (_, idx) =>
-            `($${idx * 9 + 1}, $${idx * 9 + 2}, $${idx * 9 + 3}, $${idx * 9 + 4}, $${idx * 9 + 5}, $${idx * 9 + 6}, $${idx * 9 + 7}, $${idx * 9 + 8}, $${idx * 9 + 9})`
+            `($${idx * 10 + 1}, $${idx * 10 + 2}, $${idx * 10 + 3}, $${idx * 10 + 4}, $${idx * 10 + 5}, $${idx * 10 + 6}, $${idx * 10 + 7}, $${idx * 10 + 8}, $${idx * 10 + 9}, $${idx * 10 + 10})`
         )
         .join(', ');
 
       const params = batch.flatMap((e) => [
+        e.chain ?? 'ethereum',
         e.block_number,
         e.timestamp,
         e.event_type,
@@ -65,6 +67,7 @@ export const eventsRepository = {
 
       await query(
         `INSERT INTO events (
+          chain,
           block_number,
           timestamp,
           event_type,
@@ -75,7 +78,7 @@ export const eventsRepository = {
           transaction_hash,
           log_index
         ) VALUES ${values}
-        ON CONFLICT (transaction_hash, log_index) DO NOTHING`,
+        ON CONFLICT (chain, transaction_hash, log_index) DO NOTHING`,
         params
       );
     }
@@ -87,10 +90,16 @@ export const eventsRepository = {
     contracts?: string[],
     contractAddress?: string,
     fromAddress?: string,
-    toAddress?: string
+    toAddress?: string,
+    chain?: string
   ): Promise<Event[]> {
     let whereClause = 'event_type = $1 AND timestamp >= NOW() - INTERVAL \'1 minute\' * $2';
     const params: unknown[] = [eventType, windowMinutes];
+
+    if (chain) {
+      whereClause += ` AND chain = $${params.length + 1}`;
+      params.push(chain);
+    }
 
     if (contracts && contracts.length > 0) {
       whereClause += ` AND contract_address = ANY($${params.length + 1})`;
@@ -125,17 +134,24 @@ export const eventsRepository = {
     contractAddress?: string,
     fromAddress?: string,
     toAddress?: string,
-    lookbackBlocks?: number
+    lookbackBlocks?: number,
+    chain?: string
   ): Promise<number> {
     let whereClause: string;
     const params: unknown[] = [eventType];
 
     // Use block-based lookback if specified, otherwise use time-based
     if (lookbackBlocks !== undefined) {
-      // Get current max block number
-      const maxBlockResult = await query<{ max_block: number | null }>(
-        'SELECT MAX(block_number) as max_block FROM events'
-      );
+      // Get current max block number for this chain
+      let maxBlockQuery = 'SELECT MAX(block_number) as max_block FROM events WHERE event_type = $1';
+      const maxBlockParams: unknown[] = [eventType];
+
+      if (chain) {
+        maxBlockQuery += ' AND chain = $2';
+        maxBlockParams.push(chain);
+      }
+
+      const maxBlockResult = await query<{ max_block: number | null }>(maxBlockQuery, maxBlockParams);
       const maxBlock = maxBlockResult.rows[0].max_block ?? 0;
       const minBlock = Math.max(0, maxBlock - lookbackBlocks);
 
@@ -144,6 +160,11 @@ export const eventsRepository = {
     } else {
       whereClause = 'event_type = $1 AND timestamp >= NOW() - INTERVAL \'1 minute\' * $2';
       params.push(windowMinutes);
+    }
+
+    if (chain) {
+      whereClause += ` AND chain = $${params.length + 1}`;
+      params.push(chain);
     }
 
     if (contracts && contracts.length > 0) {
@@ -181,17 +202,24 @@ export const eventsRepository = {
     contractAddress?: string,
     fromAddress?: string,
     toAddress?: string,
-    lookbackBlocks?: number
+    lookbackBlocks?: number,
+    chain?: string
   ): Promise<number> {
     let whereClause: string;
     const params: unknown[] = [eventType];
 
     // Use block-based lookback if specified, otherwise use time-based
     if (lookbackBlocks !== undefined) {
-      // Get current max block number
-      const maxBlockResult = await query<{ max_block: number | null }>(
-        'SELECT MAX(block_number) as max_block FROM events'
-      );
+      // Get current max block number for this chain
+      let maxBlockQuery = 'SELECT MAX(block_number) as max_block FROM events WHERE event_type = $1';
+      const maxBlockParams: unknown[] = [eventType];
+
+      if (chain) {
+        maxBlockQuery += ' AND chain = $2';
+        maxBlockParams.push(chain);
+      }
+
+      const maxBlockResult = await query<{ max_block: number | null }>(maxBlockQuery, maxBlockParams);
       const maxBlock = maxBlockResult.rows[0].max_block ?? 0;
       const minBlock = Math.max(0, maxBlock - lookbackBlocks);
 
@@ -200,6 +228,11 @@ export const eventsRepository = {
     } else {
       whereClause = 'event_type = $1 AND timestamp >= NOW() - INTERVAL \'1 minute\' * $2';
       params.push(windowMinutes);
+    }
+
+    if (chain) {
+      whereClause += ` AND chain = $${params.length + 1}`;
+      params.push(chain);
     }
 
     if (contracts && contracts.length > 0) {

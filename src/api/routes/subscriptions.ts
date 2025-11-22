@@ -15,7 +15,8 @@ router.post('/', async (req, res) => {
       validatedData.user_id,
       validatedData.name,
       validatedData.webhook_url,
-      validatedData.meta_event_config
+      validatedData.meta_event_config,
+      validatedData.cooldown_minutes
     );
 
     const response: SubscriptionResponse = {
@@ -24,6 +25,7 @@ router.post('/', async (req, res) => {
       name: subscription.name,
       webhook_url: subscription.webhook_url,
       meta_event_config: subscription.meta_event_config,
+      cooldown_minutes: subscription.cooldown_minutes,
       is_active: subscription.is_active,
       created_at: subscription.created_at.toISOString(),
       updated_at: subscription.updated_at.toISOString(),
@@ -56,6 +58,7 @@ router.get('/', async (req, res) => {
       name: s.name,
       webhook_url: s.webhook_url,
       meta_event_config: s.meta_event_config,
+      cooldown_minutes: s.cooldown_minutes,
       is_active: s.is_active,
       created_at: s.created_at.toISOString(),
       updated_at: s.updated_at.toISOString(),
@@ -84,6 +87,7 @@ router.get('/:id', async (req, res) => {
       name: subscription.name,
       webhook_url: subscription.webhook_url,
       meta_event_config: subscription.meta_event_config,
+      cooldown_minutes: subscription.cooldown_minutes,
       is_active: subscription.is_active,
       created_at: subscription.created_at.toISOString(),
       updated_at: subscription.updated_at.toISOString(),
@@ -117,6 +121,7 @@ router.patch('/:id', async (req, res) => {
       name: subscription.name,
       webhook_url: subscription.webhook_url,
       meta_event_config: subscription.meta_event_config,
+      cooldown_minutes: subscription.cooldown_minutes,
       is_active: subscription.is_active,
       created_at: subscription.created_at.toISOString(),
       updated_at: subscription.updated_at.toISOString(),

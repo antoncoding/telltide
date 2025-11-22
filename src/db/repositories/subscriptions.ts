@@ -6,13 +6,14 @@ export const subscriptionsRepository = {
     userId: string,
     name: string,
     webhookUrl: string,
-    metaEventConfig: MetaEventConfig
+    metaEventConfig: MetaEventConfig,
+    cooldownMinutes?: number
   ): Promise<Subscription> {
     const result = await query<Subscription>(
-      `INSERT INTO subscriptions (user_id, name, webhook_url, meta_event_config)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO subscriptions (user_id, name, webhook_url, meta_event_config, cooldown_minutes)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [userId, name, webhookUrl, JSON.stringify(metaEventConfig)]
+      [userId, name, webhookUrl, JSON.stringify(metaEventConfig), cooldownMinutes ?? 1]
     );
 
     return result.rows[0];
@@ -46,7 +47,7 @@ export const subscriptionsRepository = {
 
   async updateSubscription(
     id: string,
-    updates: Partial<Pick<Subscription, 'name' | 'webhook_url' | 'meta_event_config' | 'is_active'>>
+    updates: Partial<Pick<Subscription, 'name' | 'webhook_url' | 'meta_event_config' | 'cooldown_minutes' | 'is_active'>>
   ): Promise<Subscription | null> {
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -65,6 +66,11 @@ export const subscriptionsRepository = {
     if (updates.meta_event_config !== undefined) {
       fields.push(`meta_event_config = $${paramIndex++}`);
       values.push(JSON.stringify(updates.meta_event_config));
+    }
+
+    if (updates.cooldown_minutes !== undefined) {
+      fields.push(`cooldown_minutes = $${paramIndex++}`);
+      values.push(updates.cooldown_minutes);
     }
 
     if (updates.is_active !== undefined) {

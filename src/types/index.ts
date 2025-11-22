@@ -4,6 +4,7 @@ export type EventType = 'erc20_transfer' | 'erc4626_deposit' | 'erc4626_withdraw
 // Database Models
 export type Event = {
   id: string;
+  chain: string; // ethereum, base, etc.
   block_number: number;
   timestamp: Date;
   event_type: EventType;
@@ -26,6 +27,7 @@ export type ComparisonOperator = '>' | '<' | '>=' | '<=' | '=' | '!=';
 export type MetaEventConfig = {
   type: MetaEventConditionType;
   event_type: EventType;
+  chain?: string; // ethereum, base, etc. (defaults to ethereum)
   contracts?: string[]; // Multiple contracts to check (OR logic)
   contract_address?: string; // Single contract (backwards compat)
   from_address?: string; // For ERC20 transfers from specific address
@@ -46,6 +48,7 @@ export type Subscription = {
   name: string;
   webhook_url: string;
   meta_event_config: MetaEventConfig;
+  cooldown_minutes?: number; // Optional: minimum minutes between notifications (default: 1)
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -67,6 +70,7 @@ export type CreateSubscriptionRequest = {
   name: string;
   webhook_url: string;
   meta_event_config: MetaEventConfig;
+  cooldown_minutes?: number; // Optional: minimum minutes between notifications (default: 1)
 };
 
 export type SubscriptionResponse = {
@@ -75,6 +79,7 @@ export type SubscriptionResponse = {
   name: string;
   webhook_url: string;
   meta_event_config: MetaEventConfig;
+  cooldown_minutes?: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;

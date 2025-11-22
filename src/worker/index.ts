@@ -11,7 +11,6 @@ class MetaEventWorker {
   private detector: MetaEventDetector;
   private dispatcher: WebhookDispatcher;
   private isRunning = false;
-  private minNotificationIntervalMs = 60 * 1000;
 
   constructor() {
     this.detector = new MetaEventDetector();
@@ -28,16 +27,11 @@ class MetaEventWorker {
     const startTime = Date.now();
 
     try {
-      console.log('🔍 Checking active subscriptions...');
-
       const subscriptions = await subscriptionsRepository.getActiveSubscriptions();
 
       if (subscriptions.length === 0) {
-        console.log('📭 No active subscriptions found');
-        return;
+        return; // Silent when no subscriptions
       }
-
-      console.log(`📋 Found ${subscriptions.length} active subscription(s)`);
 
       const notifications: Array<{
         subscriptionId: string;
@@ -52,10 +46,12 @@ class MetaEventWorker {
           );
 
           if (lastNotification) {
+            const cooldownMs = (subscription.cooldown_minutes ?? 1) * 60 * 1000;
             const timeSinceLastNotification = Date.now() - lastNotification.getTime();
-            if (timeSinceLastNotification < this.minNotificationIntervalMs) {
+            if (timeSinceLastNotification < cooldownMs) {
+              const cooldownRemaining = Math.ceil((cooldownMs - timeSinceLastNotification) / 1000);
               console.log(
-                `⏰ Skipping ${subscription.name} - notified ${Math.round(timeSinceLastNotification / 1000)}s ago`
+                `⏸️  "${subscription.name}" in cooldown (${cooldownRemaining}s remaining)`
               );
               continue;
             }
@@ -64,10 +60,22 @@ class MetaEventWorker {
           const result = await this.detector.detect(subscription);
 
           if (result.triggered) {
-            console.log(`🎯 Meta-event triggered for "${subscription.name}"!`);
-            if (result.triggeredByContract) {
-              console.log(`   Triggered by contract: ${result.triggeredByContract}`);
+            console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            console.log(`🚨 META-EVENT TRIGGERED: "${subscription.name}"`);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            console.log(`   Type: ${subscription.meta_event_config.type}`);
+            console.log(`   Window: ${result.window}`);
+            if (result.aggregatedValue !== undefined) {
+              console.log(`   Value: ${result.aggregatedValue} (threshold: ${result.threshold})`);
             }
+            if (result.eventCount !== undefined) {
+              console.log(`   Events: ${result.eventCount} (threshold: ${result.threshold})`);
+            }
+            if (result.triggeredByContract) {
+              console.log(`   Contract: ${result.triggeredByContract}`);
+            }
+            console.log(`   Webhook: ${subscription.webhook_url}`);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
             const payload: WebhookPayload = {
               subscription_id: subscription.id,
@@ -88,8 +96,6 @@ class MetaEventWorker {
               webhookUrl: subscription.webhook_url,
               payload,
             });
-          } else {
-            console.log(`⚪ No trigger for "${subscription.name}"`);
           }
         } catch (error) {
           console.error(`❌ Error processing subscription ${subscription.id}:`, error);
@@ -97,13 +103,19 @@ class MetaEventWorker {
       }
 
       if (notifications.length > 0) {
-        console.log(`📤 Dispatching ${notifications.length} webhook(s)...`);
         const { successful, failed } = await this.dispatcher.dispatchBatch(notifications);
-        console.log(`✅ Successful: ${successful} | ❌ Failed: ${failed}`);
+        if (successful > 0) {
+          console.log(`✅ Successfully sent ${successful} webhook(s)`);
+        }
+        if (failed > 0) {
+          console.log(`❌ Failed to send ${failed} webhook(s)`);
+        }
       }
 
       const duration = Date.now() - startTime;
-      console.log(`✨ Check completed in ${duration}ms\n`);
+      if (notifications.length > 0) {
+        console.log(`\n📊 Check completed in ${duration}ms\n`);
+      }
     } catch (error) {
       console.error('❌ Worker error:', error);
     } finally {
