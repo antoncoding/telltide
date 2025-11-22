@@ -129,7 +129,8 @@ export class MetaEventDetector {
       config.from_address,
       config.to_address,
       config.lookback_blocks,
-      chain
+      chain,
+      config.market_id
     );
 
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;

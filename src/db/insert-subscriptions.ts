@@ -33,21 +33,21 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   },
 
   // 2. USDC Transfer Spike (Ethereum)
-  // {
-  //   name: 'USDC Transfer Spike',
-  //   description: 'Alert when USDC has high transfer activity',
-  //   config: {
-  //     chain: 'ethereum',
-  //     type: 'event_count',
-  //     event_type: 'erc20_transfer',
-  //     contract_address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC on Ethereum
-  //     window: '5m',
-  //     condition: {
-  //       operator: '>',
-  //       value: 10, // More than 10 transfers in 5 minutes
-  //     },
-  //   },
-  // },
+  {
+    name: 'USDC Transfer Spike',
+    description: 'Alert when USDC has high transfer activity',
+    config: {
+      chain: 'ethereum',
+      type: 'event_count',
+      event_type: 'erc20_transfer',
+      contract_address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC on Ethereum
+      window: '5m',
+      condition: {
+        operator: '>',
+        value: 10, // More than 10 transfers in 5 minutes
+      },
+    },
+  },
 
   // 3. Morpho Supply Event Count (Base)
   {
