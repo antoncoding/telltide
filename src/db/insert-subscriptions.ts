@@ -11,7 +11,71 @@ type SubscriptionTemplate = {
 const WEBHOOK_URL = 'http://localhost:3000/api/demo-callback';
 
 const subscriptionTemplates: SubscriptionTemplate[] = [
-  // 1. Monitor high withdrawal volume from a specific ERC4626 vault
+  // 1. USDC Transfer Spike (ERC20 event count)
+  {
+    name: 'USDC Transfer Spike',
+    description: 'Alert when USDC has more than 50 transfers in recent 100 blocks',
+    config: {
+      type: 'event_count',
+      event_type: 'erc20_transfer',
+      contract_address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC on mainnet
+      window: '1m',
+      lookback_blocks: 100,
+      condition: {
+        operator: '>',
+        value: 50,
+      },
+    },
+  },
+
+  // 2. Morpho Net Supply Alert (detects net withdrawals)
+  {
+    name: 'Morpho Net Withdrawal Alert',
+    description: 'Alert when net supply drops below -100K (more withdrawals than supply) in 1 hour',
+    config: {
+      chain: 'ethereum',
+      type: 'net_aggregate',
+      event_type: 'morpho_supply',
+      positive_event_type: 'morpho_supply',
+      negative_event_type: 'morpho_withdraw',
+      // No contract_address needed - automatically uses Morpho contract!
+      market_id: '0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836', // USDC/cbBTC
+      window: '1h',
+      aggregation: 'sum',
+      field: 'assets',
+      condition: {
+        operator: '<',
+        value: -100000000000, // -100K (6 decimals)
+      },
+    },
+  },
+
+  // 3. Morpho Net Borrow Alert (detects borrowing pressure)
+  // {
+  //   name: 'Morpho High Net Borrow',
+  //   description: 'Alert when net borrows exceed 500K (more borrows than repays) in 30 minutes',
+  //   config: {
+  //     chain: 'ethereum',
+  //     type: 'net_aggregate',
+  //     event_type: 'morpho_borrow',
+  //     positive_event_type: 'morpho_borrow',
+  //     negative_event_type: 'morpho_repay',
+  //     // No contract_address needed - automatically uses Morpho contract!
+  //     window: '30m',
+  //     aggregation: 'sum',
+  //     field: 'assets',
+  //     condition: {
+  //       operator: '>',
+  //       value: 500000000000, // 500K (6 decimals)
+  //     },
+  //   },
+  // },
+
+  // ============================================================================
+  // ERC4626 VAULT EXAMPLES (commented out - uncomment to use)
+  // ============================================================================
+
+  // 4. Monitor high withdrawal volume from a specific ERC4626 vault
   // {
   //   name: 'High Vault Withdrawal - Single Vault',
   //   description: 'Alert when withdrawals exceed 1M USDC in 2 hours from a specific vault',
@@ -19,7 +83,7 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   //     type: 'rolling_aggregate',
   //     event_type: 'erc4626_withdraw',
   //     contract_address: '0x1234567890123456789012345678901234567890', // Replace with real vault address
-  //     window: '1m',
+  //     window: '2h',
   //     aggregation: 'sum',
   //     field: 'assets',
   //     condition: {
@@ -29,7 +93,7 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   //   },
   // },
 
-  // 2. Monitor withdrawals from ANY of multiple vaults
+  // 5. Monitor withdrawals from ANY of multiple vaults
   // {
   //   name: 'High Vault Withdrawal - Multi Vault',
   //   description: 'Alert when ANY of 3 vaults exceeds 500K USDC withdrawn in 1 hour',
@@ -51,44 +115,27 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   //   },
   // },
 
-  // // 3. Monitor ERC20 transfer spike (count-based)
-  {
-    name: 'USDC Transfer Spike',
-    description: 'Alert when USDC has more than 5 transfers in recent 100 blocks',
-    config: {
-      type: 'event_count',
-      event_type: 'erc20_transfer',
-      contract_address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC on mainnet
-      window: '1m',
-      lookback_blocks: 100, // Only look back 100 blocks for efficiency
-      condition: {
-        operator: '>',
-        value: 50,
-      },
-    },
-  },
+  // 6. Base Chain - Vault Withdrawal Volume Monitor
+  // {
+  //   name: 'Base Vault Withdrawal Volume',
+  //   description: 'Alert when vault on Base has significant withdrawal volume',
+  //   config: {
+  //     chain: 'base',
+  //     type: 'rolling_aggregate',
+  //     event_type: 'erc4626_withdraw',
+  //     contract_address: '0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183', // Vault on Base
+  //     window: '1h',
+  //     lookback_blocks: 300, // ~10 minutes on Base (2s blocks)
+  //     aggregation: 'sum',
+  //     field: 'assets',
+  //     condition: {
+  //       operator: '>',
+  //       value: 1000000000, // 1000 tokens (assuming 6 decimals)
+  //     },
+  //   },
+  // },
 
-  // Base Chain - Vault Withdrawal Volume Monitor
-  {
-    name: 'Base Vault Withdrawal Volume',
-    description: 'Alert when vault on Base has significant withdrawal volume',
-    config: {
-      chain: 'base',
-      type: 'rolling_aggregate',
-      event_type: 'erc4626_withdraw',
-      contract_address: '0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183', // Vault on Base
-      window: '1h',
-      lookback_blocks: 300, // ~10 minutes on Base (2s blocks)
-      aggregation: 'sum',
-      field: 'assets',
-      condition: {
-        operator: '>',
-        value: 1000000000, // 1000 tokens (assuming 6 decimals)
-      },
-    },
-  },
-
-  // // 4. Monitor deposits to a specific vault
+  // 7. Monitor deposits to a specific vault
   // {
   //   name: 'Large Deposit Activity',
   //   description: 'Alert when total deposits exceed 2M USDC in 1 hour',
@@ -106,25 +153,25 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   //   },
   // },
 
-  // Base Chain - Vault Deposit Activity Monitor
-  {
-    name: 'Base Vault Deposit Activity',
-    description: 'Alert when vault on Base has deposit activity',
-    config: {
-      chain: 'base',
-      type: 'event_count',
-      event_type: 'erc4626_deposit',
-      contract_address: '0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183', // Vault on Base
-      window: '3m',
-      lookback_blocks: 300, // ~10 minutes on Base (2s blocks)
-      condition: {
-        operator: '>',
-        value: 2, // More than 5 deposits
-      },
-    },
-  },
+  // 8. Base Chain - Vault Deposit Activity Monitor
+  // {
+  //   name: 'Base Vault Deposit Activity',
+  //   description: 'Alert when vault on Base has deposit activity',
+  //   config: {
+  //     chain: 'base',
+  //     type: 'event_count',
+  //     event_type: 'erc4626_deposit',
+  //     contract_address: '0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183', // Vault on Base
+  //     window: '3m',
+  //     lookback_blocks: 300, // ~10 minutes on Base (2s blocks)
+  //     condition: {
+  //       operator: '>',
+  //       value: 2, // More than 2 deposits
+  //     },
+  //   },
+  // },
 
-  // // 5. Monitor average withdrawal size
+  // 9. Monitor average withdrawal size
   // {
   //   name: 'Large Average Withdrawal',
   //   description: 'Alert when average withdrawal size exceeds 100K USDC in 30 minutes',
@@ -142,7 +189,7 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   //   },
   // },
 
-  // // 6. Monitor withdrawal event count
+  // 10. Monitor withdrawal event count
   // {
   //   name: 'Withdrawal Event Spike',
   //   description: 'Alert when more than 20 withdrawal events occur in 1 hour',
@@ -158,7 +205,32 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   //   },
   // },
 
-  // // 7. Monitor transfers FROM specific address (whale tracking)
+  // 11. ERC4626 Vault Net Withdrawals (using net_aggregate)
+  // {
+  //   name: 'Vault Net Withdrawal Alert',
+  //   description: 'Alert when net deposits drop below -1M USDC in 2 hours',
+  //   config: {
+  //     chain: 'ethereum',
+  //     type: 'net_aggregate',
+  //     event_type: 'erc4626_deposit',
+  //     positive_event_type: 'erc4626_deposit',
+  //     negative_event_type: 'erc4626_withdraw',
+  //     contract_address: '0xYourVaultAddress...', // Replace with real vault
+  //     window: '2h',
+  //     aggregation: 'sum',
+  //     field: 'assets',
+  //     condition: {
+  //       operator: '<',
+  //       value: -1000000000000, // -1M USDC
+  //     },
+  //   },
+  // },
+
+  // ============================================================================
+  // WHALE TRACKING EXAMPLES (commented out - uncomment to use)
+  // ============================================================================
+
+  // 12. Monitor transfers FROM specific address (whale tracking)
   // {
   //   name: 'Whale Outflow',
   //   description: 'Alert when a whale address transfers out more than 5M USDC in 24 hours',
@@ -177,7 +249,7 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   //   },
   // },
 
-  // // 8. Monitor transfers TO specific address (accumulation tracking)
+  // 13. Monitor transfers TO specific address (accumulation tracking)
   // {
   //   name: 'Whale Accumulation',
   //   description: 'Alert when a whale address receives more than 3M USDC in 12 hours',
@@ -219,8 +291,11 @@ async function insertSubscription(template: SubscriptionTemplate, userId: string
 
 async function main() {
   console.log('🌊 TellTide Subscription Insertion Tool\n');
-  console.log('This script inserts example meta-event subscriptions into the database.');
-  console.log('Update WEBHOOK_URL and contract addresses before running!\n');
+  console.log('This script inserts example meta-event subscriptions:');
+  console.log('  • USDC transfer spike detection');
+  console.log('  • Morpho net withdrawal alert (supply - withdraw)');
+  console.log('  • Morpho net borrow alert (borrow - repay)\n');
+  console.log('⚠️  Update WEBHOOK_URL and market_id before running!\n');
 
   const userId = 'demo-user';
 
@@ -234,12 +309,21 @@ async function main() {
 
   console.log('─'.repeat(60));
   console.log(`\n✨ Successfully created ${successCount}/${subscriptionTemplates.length} subscriptions\n`);
+  console.log('📋 Active subscriptions created:');
+  console.log('   1. USDC Transfer Spike - Monitors USDC transfer activity');
+  console.log('   2. Morpho Net Withdrawal Alert - Detects net supply drops (supply - withdraw)\n');
+  console.log('💡 Additional examples available (commented out in script):');
+  console.log('   • Morpho net borrow alert');
+  console.log('   • ERC4626 vault monitoring (single & multi-vault)');
+  console.log('   • ERC4626 net withdrawal tracking');
+  console.log('   • Whale tracking (accumulation & outflow)\n');
   console.log('🔧 Next steps:');
   console.log('   1. Update WEBHOOK_URL in this script with your webhook.site URL');
-  console.log('   2. Update contract addresses to real vault/token addresses');
-  console.log('   3. Run the indexer: pnpm indexer');
-  console.log('   4. Run the worker: pnpm worker');
-  console.log('   5. Check your webhook.site for notifications!\n');
+  console.log('   2. Update market_id to a real Morpho market ID (optional)');
+  console.log('   3. Uncomment additional subscriptions as needed');
+  console.log('   4. Run the indexer: pnpm indexer');
+  console.log('   5. Run the worker: pnpm worker');
+  console.log('   6. Check your webhook.site for notifications!\n');
 
   await pool.end();
   console.log('👋 Done!\n');

@@ -148,6 +148,8 @@ curl -X POST http://localhost:3000/api/subscriptions \
 
 **This triggers when**: Net withdrawals (supply - withdraw) from the specific Morpho market exceed 1M USDC in 1 hour (negative value means more withdrawals than supply). Won't send another notification for 5 minutes after triggering.
 
+**Note:** No `contract_address` needed - automatically uses Morpho contract!
+
 **Example 2: Net Borrow Alert Across Multiple Markets**
 
 ```bash
@@ -164,9 +166,6 @@ curl -X POST http://localhost:3000/api/subscriptions \
       "event_type": "morpho_borrow",
       "positive_event_type": "morpho_borrow",
       "negative_event_type": "morpho_repay",
-      "contracts": [
-        "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"
-      ],
       "window": "30m",
       "aggregation": "sum",
       "field": "assets",
@@ -178,7 +177,9 @@ curl -X POST http://localhost:3000/api/subscriptions \
   }'
 ```
 
-**This triggers when**: Net borrows (borrow - repay) across the Morpho contract exceed 500K USDC in 30 minutes.
+**This triggers when**: Net borrows (borrow - repay) across ALL Morpho markets exceed 500K USDC in 30 minutes.
+
+**Note:** No `contract_address` or `contracts` needed - automatically monitors all Morpho markets!
 
 ### Example Use Cases
 
@@ -368,7 +369,10 @@ Use [webhook.site](https://webhook.site) to get a test webhook URL.
 
 **Morpho Blue Contract:** `0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb` (same address on Ethereum and Base)
 
-**Note:** The indexer is configured to ONLY capture Morpho events from this specific contract address to save bandwidth.
+**✨ Important Notes:**
+- The indexer is configured to ONLY capture Morpho events from this specific contract address to save bandwidth
+- **You do NOT need to specify `contract_address` when creating subscriptions for Morpho events** - it's automatically injected!
+- Just specify the event type (e.g., `morpho_supply`) and optionally filter by `market_id`
 
 ### ERC4626 Vault Events
 - `erc4626_deposit` - ERC4626 vault deposits (sender, owner, assets, shares)

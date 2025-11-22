@@ -33,7 +33,7 @@
 0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb
 ```
 
-**⚠️ IMPORTANT:** The indexer ONLY captures Morpho events from this specific contract address. When creating subscriptions for Morpho events, you should include this as `contract_address` in your meta_event_config for clarity (though it's technically redundant since we only index from this address).
+**✨ IMPORTANT:** The system automatically uses the Morpho contract address for all Morpho events. **You do NOT need to specify `contract_address` when creating subscriptions for Morpho events** - it's automatically injected! Just specify the `event_type` (e.g., `morpho_supply`) and optionally filter by `market_id`.
 
 **Event Data Structure:**
 ```json
@@ -176,7 +176,6 @@ curl -X POST http://localhost:3000/api/subscriptions \
       "positive_event_type": "morpho_supply",
       "negative_event_type": "morpho_withdraw",
       "chain": "ethereum",
-      "contract_address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
       "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
       "window": "1h",
       "aggregation": "sum",
@@ -188,6 +187,8 @@ curl -X POST http://localhost:3000/api/subscriptions \
     }
   }'
 ```
+
+**Note:** No `contract_address` needed - automatically uses Morpho contract!
 
 **Response:**
 ```json
@@ -203,7 +204,6 @@ curl -X POST http://localhost:3000/api/subscriptions \
     "positive_event_type": "morpho_supply",
     "negative_event_type": "morpho_withdraw",
     "chain": "ethereum",
-    "contract_address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
     "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
     "window": "1h",
     "aggregation": "sum",
@@ -241,7 +241,6 @@ curl -X POST http://localhost:3000/api/subscriptions \
       "positive_event_type": "morpho_borrow",
       "negative_event_type": "morpho_repay",
       "chain": "ethereum",
-      "contract_address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
       "window": "30m",
       "aggregation": "sum",
       "field": "assets",
@@ -252,6 +251,8 @@ curl -X POST http://localhost:3000/api/subscriptions \
     }
   }'
 ```
+
+**Note:** No `contract_address` needed - monitors all Morpho markets!
 
 ---
 
@@ -307,7 +308,6 @@ curl -X POST http://localhost:3000/api/subscriptions \
       "type": "event_count",
       "event_type": "morpho_supply",
       "chain": "ethereum",
-      "contract_address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
       "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
       "window": "15m",
       "condition": {
@@ -317,6 +317,8 @@ curl -X POST http://localhost:3000/api/subscriptions \
     }
   }'
 ```
+
+**Note:** No `contract_address` needed!
 
 ---
 
@@ -338,8 +340,7 @@ curl -X POST http://localhost:3000/api/subscriptions \
       "type": "rolling_aggregate",
       "event_type": "morpho_supply",
       "chain": "ethereum",
-      "contract_address": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb",
-      "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
+      "market_id": "0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836",
       "window": "1h",
       "aggregation": "sum",
       "field": "assets",
@@ -350,6 +351,8 @@ curl -X POST http://localhost:3000/api/subscriptions \
     }
   }'
 ```
+
+**Note:** No `contract_address` needed!
 
 ---
 

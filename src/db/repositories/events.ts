@@ -1,5 +1,17 @@
 import { query } from '../client.js';
 import type { Event, EventType, AggregationType } from '../../types/index.js';
+import { config } from '../../config/index.js';
+
+// Helper to check if event type is a Morpho event
+const isMorphoEvent = (eventType: EventType): boolean => {
+  return eventType.startsWith('morpho_');
+};
+
+// Helper to get Morpho contract address for a specific chain
+const getMorphoAddress = (chain?: string): string => {
+  const chainName = (chain ?? 'ethereum') as 'ethereum' | 'base';
+  return config.chains[chainName].morphoAddress;
+};
 
 export const eventsRepository = {
   async insertEvent(event: Omit<Event, 'id' | 'created_at'>): Promise<Event> {
@@ -168,6 +180,11 @@ export const eventsRepository = {
       params.push(chain);
     }
 
+    // Auto-inject Morpho contract address for Morpho events
+    if (isMorphoEvent(eventType) && !contractAddress && (!contracts || contracts.length === 0)) {
+      contractAddress = getMorphoAddress(chain);
+    }
+
     if (contracts && contracts.length > 0) {
       whereClause += ` AND contract_address = ANY($${params.length + 1})`;
       params.push(contracts.map((c) => c.toLowerCase()));
@@ -240,6 +257,11 @@ export const eventsRepository = {
     if (chain) {
       whereClause += ` AND chain = $${params.length + 1}`;
       params.push(chain);
+    }
+
+    // Auto-inject Morpho contract address for Morpho events
+    if (isMorphoEvent(eventType) && !contractAddress && (!contracts || contracts.length === 0)) {
+      contractAddress = getMorphoAddress(chain);
     }
 
     if (contracts && contracts.length > 0) {
