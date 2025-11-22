@@ -69,11 +69,6 @@ class MetaEventWorker {
               console.log(`   Triggered by contract: ${result.triggeredByContract}`);
             }
 
-            const events = await this.detector.getRelevantEvents(
-              subscription.meta_event_config,
-              50
-            );
-
             const payload: WebhookPayload = {
               subscription_id: subscription.id,
               subscription_name: subscription.name,
@@ -86,13 +81,6 @@ class MetaEventWorker {
                 window: result.window,
                 triggered_by_contract: result.triggeredByContract,
               },
-              events: events.map((e) => ({
-                block_number: e.block_number,
-                timestamp: e.timestamp.toISOString(),
-                event_type: e.event_type,
-                contract_address: e.contract_address,
-                data: e.data,
-              })),
             };
 
             notifications.push({

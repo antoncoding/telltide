@@ -144,6 +144,12 @@ export class MetaEventDetector {
       throw new Error('Rolling aggregate requires field and aggregation');
     }
 
+    if (config.aggregation === 'count') {
+      throw new Error('Use event_count type for count aggregation');
+    }
+
+    // Type assertion safe after count check above
+    const aggregation = config.aggregation as Exclude<typeof config.aggregation, 'count'>;
     const contracts = config.contracts ?? (config.contract_address ? [config.contract_address] : undefined);
 
     // If multiple contracts, check each
@@ -152,7 +158,7 @@ export class MetaEventDetector {
         const aggregatedValue = await eventsRepository.getAggregatedValue(
           config.event_type,
           config.field,
-          config.aggregation,
+          aggregation,
           windowMinutes,
           undefined,
           contract,
@@ -184,7 +190,7 @@ export class MetaEventDetector {
     const aggregatedValue = await eventsRepository.getAggregatedValue(
       config.event_type,
       config.field,
-      config.aggregation,
+      aggregation,
       windowMinutes,
       contracts,
       config.contract_address,

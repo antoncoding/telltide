@@ -1,5 +1,5 @@
 import { query } from '../client.js';
-import type { Event, EventType } from '../../types/index.js';
+import type { Event, EventType, AggregationType } from '../../types/index.js';
 
 export const eventsRepository = {
   async insertEvent(event: Omit<Event, 'id' | 'created_at'>): Promise<Event> {
@@ -149,7 +149,7 @@ export const eventsRepository = {
   async getAggregatedValue(
     eventType: EventType,
     field: string,
-    aggregation: 'sum' | 'avg' | 'min' | 'max',
+    aggregation: Exclude<AggregationType, 'count'>,
     windowMinutes: number,
     contracts?: string[],
     contractAddress?: string,

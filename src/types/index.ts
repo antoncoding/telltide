@@ -91,11 +91,4 @@ export type WebhookPayload = {
     window: string;
     triggered_by_contract?: string; // Which contract triggered (if multiple)
   };
-  events: Array<{
-    block_number: number;
-    timestamp: string;
-    event_type: EventType;
-    contract_address: string;
-    data: Record<string, unknown>;
-  }>;
 };

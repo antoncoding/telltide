@@ -19,14 +19,19 @@ router.get('/', async (req, res) => {
       params.push(validatedQuery.event_type);
     }
 
-    if (validatedQuery.market_id) {
-      whereClause += ` AND market_id = $${paramIndex++}`;
-      params.push(validatedQuery.market_id);
-    }
-
     if (validatedQuery.contract_address) {
       whereClause += ` AND contract_address = $${paramIndex++}`;
       params.push(validatedQuery.contract_address);
+    }
+
+    if (validatedQuery.from_address) {
+      whereClause += ` AND from_address = $${paramIndex++}`;
+      params.push(validatedQuery.from_address);
+    }
+
+    if (validatedQuery.to_address) {
+      whereClause += ` AND to_address = $${paramIndex++}`;
+      params.push(validatedQuery.to_address);
     }
 
     if (validatedQuery.from_block) {

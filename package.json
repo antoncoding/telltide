@@ -12,7 +12,8 @@
     "api": "tsx src/api/index.ts",
     "worker": "tsx src/worker/index.ts",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "db:insert-subs": "tsx src/db/insert-subscriptions.ts"
   },
   "keywords": [
     "blockchain",

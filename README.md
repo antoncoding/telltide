@@ -99,6 +99,17 @@ pnpm api      # Terminal 3
 - 🔍 Indexer: Indexing ERC20 + ERC4626 events
 - ⚙️ Worker: Checking subscriptions every 30s
 
+**6. (Optional) Insert example subscriptions:**
+
+Quickly create example meta-event subscriptions for testing:
+```bash
+# Edit src/db/insert-subscriptions.ts first:
+# - Set your webhook.site URL
+# - Update contract addresses to real vaults/tokens
+
+pnpm db:insert-subs
+```
+
 ---
 
 ## 📖 Usage
@@ -200,23 +211,7 @@ When triggered, your webhook receives:
     "threshold": 1000000000000,
     "window": "2h",
     "triggered_by_contract": "0xVaultB..."
-  },
-  "events": [
-    {
-      "block_number": 20500000,
-      "timestamp": "2025-11-22T09:45:00.000Z",
-      "event_type": "erc4626_withdraw",
-      "contract_address": "0xVaultB...",
-      "data": {
-        "sender": "0x...",
-        "receiver": "0x...",
-        "owner": "0x...",
-        "assets": "500000000000",
-        "shares": "500000000000"
-      }
-    }
-    // ... up to 50 recent events
-  ]
+  }
 }
 ```
 
@@ -265,6 +260,15 @@ Key environment variables (see `.env.example`):
 ---
 
 ## 🛠️ Development
+
+### Insert Example Subscriptions
+Quickly create example subscriptions for testing:
+
+```bash
+pnpm db:insert-subs
+```
+
+This creates 8 example meta-event subscriptions with various configurations (withdrawal alerts, transfer spikes, whale tracking, etc.). Edit the script first to set your webhook URL and real contract addresses.
 
 ### Reset Database
 ```bash
