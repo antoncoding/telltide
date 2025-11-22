@@ -7,6 +7,8 @@ import { MetaEventDetector } from './detector.js';
 import { WebhookDispatcher } from './webhook.js';
 import type { WebhookPayload } from '../types/index.js';
 
+const timestamp = () => new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+
 class MetaEventWorker {
   private detector: MetaEventDetector;
   private dispatcher: WebhookDispatcher;
@@ -19,12 +21,10 @@ class MetaEventWorker {
 
   async processSubscriptions(): Promise<void> {
     if (this.isRunning) {
-      console.log('⏭️  Previous check still running, skipping...');
       return;
     }
 
     this.isRunning = true;
-    const startTime = Date.now();
 
     try {
       const subscriptions = await subscriptionsRepository.getActiveSubscriptions();
@@ -49,11 +49,7 @@ class MetaEventWorker {
             const cooldownMs = (subscription.cooldown_minutes ?? 1) * 60 * 1000;
             const timeSinceLastNotification = Date.now() - lastNotification.getTime();
             if (timeSinceLastNotification < cooldownMs) {
-              const cooldownRemaining = Math.ceil((cooldownMs - timeSinceLastNotification) / 1000);
-              console.log(
-                `⏸️  "${subscription.name}" in cooldown (${cooldownRemaining}s remaining)`
-              );
-              continue;
+              continue; // Silent cooldown
             }
           }
 
@@ -103,18 +99,7 @@ class MetaEventWorker {
       }
 
       if (notifications.length > 0) {
-        const { successful, failed } = await this.dispatcher.dispatchBatch(notifications);
-        if (successful > 0) {
-          console.log(`✅ Successfully sent ${successful} webhook(s)`);
-        }
-        if (failed > 0) {
-          console.log(`❌ Failed to send ${failed} webhook(s)`);
-        }
-      }
-
-      const duration = Date.now() - startTime;
-      if (notifications.length > 0) {
-        console.log(`\n📊 Check completed in ${duration}ms\n`);
+        await this.dispatcher.dispatchBatch(notifications);
       }
     } catch (error) {
       console.error('❌ Worker error:', error);
@@ -124,8 +109,7 @@ class MetaEventWorker {
   }
 
   start(): void {
-    console.log('🌊 Starting TellTide Meta-Event Worker...');
-    console.log(`⏱️  Check interval: ${config.worker.intervalSeconds} seconds\n`);
+    console.log(`[${timestamp()}] INFO: Worker starting | interval=${config.worker.intervalSeconds}s`);
 
     const cronExpression = `*/${config.worker.intervalSeconds} * * * * *`;
 
@@ -140,7 +124,7 @@ class MetaEventWorker {
 async function main() {
   const connected = await testConnection();
   if (!connected) {
-    console.error('❌ Failed to connect to database. Exiting...');
+    console.error(`[${timestamp()}] ERROR: Failed to connect to database`);
     process.exit(1);
   }
 
@@ -148,7 +132,7 @@ async function main() {
   worker.start();
 
   process.on('SIGINT', () => {
-    console.log('\n👋 Shutting down worker...');
+    console.log(`\n[${timestamp()}] INFO: Shutting down`);
     process.exit(0);
   });
 }

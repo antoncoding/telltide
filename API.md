@@ -4,21 +4,16 @@ Complete API reference for TellTide meta-event detection and webhook notificatio
 
 **Base URL:** `http://localhost:3000` (default development)
 
+**Supported Networks:** Ethereum Mainnet, Base Mainnet
+
 ---
 
 ## Table of Contents
 
-- [Authentication](#authentication)
 - [Subscriptions API](#subscriptions-api)
 - [Health Check](#health-check)
 - [Data Types](#data-types)
 - [Error Responses](#error-responses)
-
----
-
-## Authentication
-
-Currently, TellTide does not require authentication. This is intended for hackathon/demo purposes. In production, you should add API keys or OAuth authentication.
 
 ---
 
@@ -39,7 +34,9 @@ Create a new meta-event subscription.
   "user_id": "string",
   "name": "string",
   "webhook_url": "string (valid URL)",
+  "cooldown_minutes": number (optional, defaults to 1),
   "meta_event_config": {
+    "chain": "ethereum" | "base" (optional, defaults to ethereum),
     "type": "rolling_aggregate" | "event_count",
     "event_type": "erc20_transfer" | "erc4626_deposit" | "erc4626_withdraw",
     "contract_address": "string (optional, 0x-prefixed address)",
@@ -47,7 +44,7 @@ Create a new meta-event subscription.
     "from_address": "string (optional, filter transfers FROM address)",
     "to_address": "string (optional, filter transfers TO address)",
     "window": "string (e.g., '1h', '15m', '24h')",
-    "lookback_blocks": number (optional, how many blocks back to look - overrides time-based window),
+    "lookback_blocks": number (optional, how many blocks back to look - more efficient for small windows),
     "aggregation": "sum" | "avg" | "min" | "max" (required for rolling_aggregate),
     "field": "string (required for rolling_aggregate, e.g., 'assets', 'value')",
     "condition": {
@@ -73,7 +70,7 @@ Create a new meta-event subscription.
 }
 ```
 
-**Example:**
+**Example - Ethereum:**
 
 ```bash
 curl -X POST http://localhost:3000/api/subscriptions \
@@ -82,7 +79,9 @@ curl -X POST http://localhost:3000/api/subscriptions \
     "user_id": "alice",
     "name": "High Vault Withdrawal Alert",
     "webhook_url": "https://webhook.site/your-unique-url",
+    "cooldown_minutes": 5,
     "meta_event_config": {
+      "chain": "ethereum",
       "type": "rolling_aggregate",
       "event_type": "erc4626_withdraw",
       "contracts": [
@@ -95,6 +94,31 @@ curl -X POST http://localhost:3000/api/subscriptions \
       "condition": {
         "operator": ">",
         "value": 1000000000000
+      }
+    }
+  }'
+```
+
+**Example - Base:**
+
+```bash
+curl -X POST http://localhost:3000/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "bob",
+    "name": "Base Vault Deposit Monitor",
+    "webhook_url": "https://webhook.site/your-unique-url",
+    "cooldown_minutes": 1,
+    "meta_event_config": {
+      "chain": "base",
+      "type": "event_count",
+      "event_type": "erc4626_deposit",
+      "contract_address": "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
+      "window": "1h",
+      "lookback_blocks": 300,
+      "condition": {
+        "operator": ">",
+        "value": 5
       }
     }
   }'
@@ -367,6 +391,7 @@ Triggers when the number of events in a time window meets a condition.
 
 ```json
 {
+  "chain": "ethereum",
   "type": "event_count",
   "event_type": "erc20_transfer",
   "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -378,7 +403,7 @@ Triggers when the number of events in a time window meets a condition.
 }
 ```
 
-**Triggers when:** More than 100 transfers occur in 15 minutes.
+**Triggers when:** More than 100 USDC transfers occur in 15 minutes on Ethereum.
 
 #### Rolling Aggregate
 
@@ -386,9 +411,10 @@ Triggers when an aggregated field value in a time window meets a condition.
 
 ```json
 {
+  "chain": "base",
   "type": "rolling_aggregate",
   "event_type": "erc4626_withdraw",
-  "contract_address": "0x...",
+  "contract_address": "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
   "window": "2h",
   "aggregation": "sum",
   "field": "assets",
@@ -399,7 +425,7 @@ Triggers when an aggregated field value in a time window meets a condition.
 }
 ```
 
-**Triggers when:** Total withdrawn assets exceed 1M USDC in 2 hours.
+**Triggers when:** Total withdrawn assets exceed 1M tokens in 2 hours on Base.
 
 **Aggregation Types:**
 - `sum` - Total of all values
@@ -417,6 +443,7 @@ Monitor ANY of multiple contracts (OR logic):
 
 ```json
 {
+  "chain": "ethereum",
   "type": "rolling_aggregate",
   "event_type": "erc4626_withdraw",
   "contracts": [
@@ -434,19 +461,20 @@ Monitor ANY of multiple contracts (OR logic):
 }
 ```
 
-**Triggers when:** ANY of the 3 vaults exceeds 500K USDC withdrawn in 1 hour.
+**Triggers when:** ANY of the 3 vaults exceeds 500K USDC withdrawn in 1 hour on Ethereum.
 
 ### Block-Based Lookback
 
-Use `lookback_blocks` instead of time-based window for more efficient queries:
+Use `lookback_blocks` instead of time-based window for more efficient queries. This is especially useful on Base with its faster block times.
 
 ```json
 {
+  "chain": "base",
   "type": "event_count",
   "event_type": "erc20_transfer",
   "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   "window": "1m",
-  "lookback_blocks": 100,
+  "lookback_blocks": 300,
   "condition": {
     "operator": ">",
     "value": 5
@@ -454,25 +482,42 @@ Use `lookback_blocks` instead of time-based window for more efficient queries:
 }
 ```
 
-**Triggers when:** More than 5 USDC transfers occur in the last 100 blocks.
+**Triggers when:** More than 5 USDC transfers occur in the last 300 blocks on Base (~10 minutes with 2s blocks).
 
 **When to use:**
 - Small time windows that only need recent data (e.g., "1m" window)
 - Testing scenarios where you want to limit the data scanned
 - More predictable query performance (not dependent on block time variance)
+- Faster chains like Base where block times are consistent
 
-**Note:** When `lookback_blocks` is specified, queries use block numbers instead of timestamps. The system finds the current max block and looks back the specified number of blocks.
+**Note:** When `lookback_blocks` is specified, queries use block numbers instead of timestamps. The system finds the current max block for the specified chain and looks back the specified number of blocks.
+
+### Supported Chains
+
+TellTide supports multi-chain monitoring:
+
+| Chain | Value | Block Time | Recommended lookback_blocks |
+|-------|-------|------------|----------------------------|
+| Ethereum Mainnet | `ethereum` | ~12s | 100 blocks ≈ 20 min |
+| Base Mainnet | `base` | ~2s | 300 blocks ≈ 10 min |
+
+**Chain-specific notes:**
+- Events are stored and queried separately per chain
+- Each chain has its own indexer instance
+- Default is `ethereum` if chain not specified
+- Block-based lookback is more efficient on Base due to faster blocks
 
 ### Address Filtering
 
-Filter events by sender/receiver addresses:
+Filter events by sender/receiver addresses (works on all chains):
 
 ```json
 {
+  "chain": "ethereum",
   "type": "rolling_aggregate",
   "event_type": "erc20_transfer",
   "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  "from_address": "0x123...",  // Track specific sender
+  "from_address": "0x123...",
   "window": "24h",
   "aggregation": "sum",
   "field": "value",
@@ -483,7 +528,7 @@ Filter events by sender/receiver addresses:
 }
 ```
 
-**Triggers when:** Whale address sends more than 5M USDC in 24 hours.
+**Triggers when:** Whale address sends more than 5M USDC in 24 hours on Ethereum.
 
 ### Time Windows
 
@@ -492,6 +537,24 @@ Supported time window formats:
 - Minutes: `1m`, `5m`, `15m`, `30m`
 - Hours: `1h`, `2h`, `6h`, `12h`, `24h`
 - Days: `1d`, `7d`
+
+### Cooldown Period
+
+Prevent spam notifications with per-subscription cooldowns:
+
+**How it works:**
+- After a notification is sent, the subscription enters cooldown
+- No new notifications will be sent until cooldown expires
+- Configured via `cooldown_minutes` field (defaults to 1 minute)
+- Recommended: 5-10 minutes for production to avoid notification spam
+- Cooldown is tracked per subscription in the database
+
+**Example:**
+```json
+{
+  "cooldown_minutes": 5
+}
+```
 
 ### Webhook Payload
 
@@ -518,6 +581,7 @@ When a meta-event triggers, your webhook receives:
 - Timeout: 10 seconds
 - Retries: 3 attempts with exponential backoff
 - User-Agent: `TellTide-Webhook/1.0`
+- Special handling: 404 errors are not retried (indicates bad webhook URL)
 
 ---
 

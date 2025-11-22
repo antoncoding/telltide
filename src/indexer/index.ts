@@ -8,20 +8,18 @@ import { testConnection } from '../db/client.js';
 import { events as erc4626Abi } from '../abi/erc4626.js';
 import type { EventType } from '../types/index.js';
 
-async function main() {
-  console.log('🌊 Starting TellTide Event Indexer...');
+const timestamp = () => new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
 
+async function main() {
   const connected = await testConnection();
   if (!connected) {
-    console.error('❌ Failed to connect to database. Exiting...');
+    console.error(`[${timestamp()}] ERROR: Failed to connect to database`);
     process.exit(1);
   }
 
   // Use ethereum chain for indexing (Base support coming soon)
   const chainName = 'ethereum';
   const chainConfig = config.chains.ethereum;
-
-  console.log(`💡 Fetching current blockchain head from RPC (${chainName})...`);
 
   // Fetch current head block via RPC
   let headBlock = 0;
@@ -34,23 +32,19 @@ async function main() {
     });
 
     if (response.data?.result) {
-      headBlock = parseInt(response.data.result, 16); // Convert hex to decimal
-      console.log(`✅ Successfully fetched current block from RPC`);
+      headBlock = parseInt(response.data.result, 16);
     } else {
       throw new Error('Invalid RPC response');
     }
   } catch (error) {
-    console.error('❌ Failed to fetch current head block from RPC:', error);
-    console.log('💡 Falling back to default start block...');
-    headBlock = 21200000; // Fallback to a recent block if RPC fails
+    console.error(`[${timestamp()}] ERROR: Failed to fetch head block from RPC, using fallback`);
+    headBlock = 21200000;
   }
 
   // Calculate dynamic start block
   const startBlock = Math.max(1, headBlock - config.indexer.maxLookbackBlocks);
 
-  console.log(`📡 Current head block: ${headBlock.toLocaleString()}`);
-  console.log(`📍 Starting from block: ${startBlock.toLocaleString()} (${config.indexer.maxLookbackBlocks.toLocaleString()} blocks back)`);
-  console.log(`🔍 Indexing: ERC20 Transfers + ERC4626 Deposits/Withdrawals\n`);
+  console.log(`[${timestamp()}] INFO: Indexer starting | chain=${chainName} blocks=${startBlock.toLocaleString()}-${headBlock.toLocaleString()} events=ERC20+ERC4626`);
 
   const queryBuilder = new EvmQueryBuilder()
     .addFields({
@@ -195,11 +189,11 @@ async function main() {
 
         if (eventsToInsert.length > 0) {
           await eventsRepository.insertEventsBatch(eventsToInsert);
-          logger.info(`✅ Inserted ${eventsToInsert.length} events`);
         }
 
         const lastBlock = Math.max(...data.blocks.map((b) => b.header.number));
-        logger.info(`📦 Processed block ${lastBlock} | Events: ${eventsToInsert.length}`);
+        const blockRange = `${Math.min(...data.blocks.map((b) => b.header.number))}-${lastBlock}`;
+        logger.info(`block=${blockRange} events=${eventsToInsert.length}`);
       }
     },
   });

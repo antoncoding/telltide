@@ -34,11 +34,8 @@ export class WebhookDispatcher {
         lastStatus = response.status;
 
         if (response.status >= 200 && response.status < 300) {
-          console.log(`   ✅ Webhook delivered (HTTP ${response.status})`);
           success = true;
           break;
-        } else {
-          console.warn(`   ⚠️  Non-2xx response: HTTP ${response.status}`);
         }
       } catch (error) {
         if (axios.isAxiosError(error)) {
@@ -46,20 +43,13 @@ export class WebhookDispatcher {
 
           // Handle 404 specially - don't retry, it's a config issue
           if (lastStatus === 404) {
-            console.error(`   ❌ Webhook failed: HTTP 404 Not Found`);
-            console.error(`   💡 Check your webhook URL: ${webhookUrl}`);
-            break; // Don't retry 404s
+            console.error(`   ❌ Webhook 404: ${webhookUrl}`);
+            break;
           }
-
-          console.error(`   ❌ Webhook failed: ${error.message} (HTTP ${lastStatus || 'N/A'})`);
-        } else {
-          console.error(`   ❌ Unexpected error:`, error);
         }
 
         // Wait before retry (skip for 404)
         if (attempt < this.maxRetries - 1 && lastStatus !== 404) {
-          const delaySeconds = (this.retryDelayMs * (attempt + 1)) / 1000;
-          console.log(`   ⏳ Retrying in ${delaySeconds}s...`);
           await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs * (attempt + 1)));
         }
       }
