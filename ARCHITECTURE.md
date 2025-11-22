@@ -1,512 +1,1107 @@
-# ChaosChain Architecture
+# TellTide Architecture & AI Context Reference
 
-## System Overview
+> **Purpose:** This document serves as the complete technical reference for TellTide. Use this to give AI assistants full context about the system's current state, design decisions, and implementation details.
 
-ChaosChain is a meta-event detection and notification system built on top of the SQD Pipes SDK. It enables developers to create complex, aggregated event conditions ("meta-events") from blockchain data and receive webhook notifications when those conditions are met.
+---
 
-## High-Level Architecture
+## Executive Summary
+
+**TellTide** is a multi-chain meta-event detection and webhook notification system for Ethereum and Base. It indexes ERC20 transfers and ERC4626 vault events, detects aggregated conditions (meta-events), and sends webhook notifications.
+
+**Current State (v1.0):**
+- ✅ Multi-chain support (Ethereum + Base)
+- ✅ ERC20 + ERC4626 event indexing
+- ✅ Meta-event detection (count + aggregations)
+- ✅ Webhook notifications with retry
+- ✅ Per-subscription cooldowns
+- ✅ Block-based lookback for efficiency
+- ✅ REST API for subscription management
+- ✅ PostgreSQL storage with JSONB
+
+**Tech Stack:**
+- Runtime: Node.js 18+ / TypeScript
+- Indexing: SQD Pipes SDK
+- Database: PostgreSQL 16
+- API: Express.js + Zod validation
+- Scheduling: node-cron
+- HTTP: Axios
+
+---
+
+## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    ETHEREUM BLOCKCHAIN                          │
-│                     (Morpho Blue Protocol)                      │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         │ Raw blockchain data
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    SQD PORTAL API                               │
-│            (10-50x faster than RPC)                             │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         │ Filtered & decoded events
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    INDEXER (SQD Pipes)                          │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ • Streams Morpho events (Supply, Borrow, Withdraw, etc.) │  │
-│  │ • Decodes event data using ABIs                          │  │
-│  │ • Handles blockchain forks (onRollback)                  │  │
-│  │ • Saves cursor for resumption                            │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         │ INSERT events
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   POSTGRESQL DATABASE                           │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ Tables:                                                   │  │
-│  │ • events - Raw blockchain events with JSONB data         │  │
-│  │ • subscriptions - User-defined meta-event configs        │  │
-│  │ • notifications_log - Webhook delivery tracking          │  │
-│  │ • indexer_cursor - Indexer state management              │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└───────────┬──────────────────────────────────┬──────────────────┘
-            │                                  │
-            │ Query events                     │ Query subscriptions
-            ▼                                  ▼
-┌───────────────────────────┐     ┌────────────────────────────────┐
-│   META-EVENT WORKER       │     │       REST API                 │
-│  ┌─────────────────────┐  │     │  ┌──────────────────────────┐ │
-│  │ • Runs every 30s    │  │     │  │ POST /subscriptions      │ │
-│  │ • Checks active     │  │     │  │ GET  /subscriptions      │ │
-│  │   subscriptions     │  │     │  │ PATCH /subscriptions/:id │ │
-│  │ • Evaluates         │  │     │  │ DELETE /subscriptions/:id│ │
-│  │   conditions        │  │     │  │ GET  /events             │ │
-│  │ • Dispatches        │  │     │  │ GET  /events/stats       │ │
-│  │   webhooks          │  │     │  └──────────────────────────┘ │
-│  └─────────────────────┘  │     └────────────────────────────────┘
-└──────────┬────────────────┘                   ▲
-           │                                    │
-           │ HTTP POST                          │ HTTP requests
-           ▼                                    │
-┌───────────────────────────┐     ┌────────────┴──────────────────┐
-│   WEBHOOK ENDPOINT        │     │   DEVELOPER                   │
-│  (User's server)          │     │  (Your application)           │
-└───────────────────────────┘     └───────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  BLOCKCHAIN NETWORKS                                    │
+│  ┌──────────────────┐      ┌──────────────────┐       │
+│  │  Ethereum        │      │  Base            │       │
+│  │  ~12s blocks     │      │  ~2s blocks      │       │
+│  └──────────────────┘      └──────────────────┘       │
+└───────────┬─────────────────────────┬───────────────────┘
+            │                         │
+            │ SQD Portal API          │ SQD Portal API
+            ▼                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  INDEXER (per chain)                                    │
+│  • Fetches ERC20 + ERC4626 events                      │
+│  • Dynamic start block (current - N blocks)            │
+│  • Batch inserts to PostgreSQL                         │
+│  • Handles forks via cursor management                 │
+└───────────┬─────────────────────────────────────────────┘
+            │
+            │ INSERT events with chain tag
+            ▼
+┌─────────────────────────────────────────────────────────┐
+│  POSTGRESQL DATABASE                                    │
+│  • events (chain, block_number, event_type, data...)   │
+│  • subscriptions (user configs + chain + cooldown)     │
+│  • notifications_log (delivery tracking)               │
+└───────┬─────────────────────┬───────────────────────────┘
+        │                     │
+        │ Query events        │ Manage subscriptions
+        ▼                     ▼
+┌──────────────────┐    ┌─────────────────────────────┐
+│  WORKER          │    │  REST API                   │
+│  • Every 30s     │    │  • POST /subscriptions      │
+│  • Check active  │    │  • GET  /subscriptions      │
+│  • Detect        │    │  • PATCH/DELETE /:id        │
+│  • Webhook POST  │    │  • GET  /:id/notifications  │
+│  • Cooldown      │    │  • GET  /health             │
+└──────────────────┘    └─────────────────────────────┘
+        │
+        │ HTTP POST (retry 3x)
+        ▼
+┌─────────────────────────┐
+│  USER'S WEBHOOK         │
+│  (webhook.site, etc.)   │
+└─────────────────────────┘
 ```
 
-## Component Details
+---
 
-### 1. Indexer (SQD Pipes)
+## Core Components
 
-**Location**: `src/indexer/index.ts`
+### 1. Indexer (`src/indexer/index.ts`)
 
-**Responsibilities**:
-- Connects to SQD Portal API for fast blockchain data access
-- Filters for Morpho Blue events (Supply, Borrow, Withdraw, Repay, Liquidation)
-- Decodes raw event data using event signatures
-- Batch inserts events into PostgreSQL
-- Handles blockchain reorganizations (forks)
-- Manages cursor for resumable indexing
+**Purpose:** Fetch and store blockchain events from Ethereum and Base
 
-**Technology**:
-- `@subsquid/pipes` - SQD Pipes SDK
-- `EvmQueryBuilder` - Type-safe query construction
-- `evmPortalSource` - Portal data streaming
-- Optional SQLite caching for development
+**How it works:**
+1. Fetches current head block via RPC (`eth_blockNumber`)
+2. Calculates start block: `max(1, head - MAX_LOOKBACK_BLOCKS)`
+3. Uses SQD Pipes SDK to stream events from SQD Portal
+4. Decodes ERC20 Transfer + ERC4626 Deposit/Withdraw events
+5. Batch inserts to PostgreSQL with `chain` field
+6. Duplicate prevention via unique constraint: `(chain, transaction_hash, log_index)`
 
-**Data Flow**:
+**Key Features:**
+- Dynamic start block calculation (no hardcoded values)
+- Chain-specific portal URLs
+- SQLite cache for development (optional)
+- Graceful error handling
+
+**Log Format (concise):**
 ```
-Portal → QueryBuilder → Source → Decoder → Batch Insert → PostgreSQL
-                                              ↓
-                                        Update Cursor
+[14:37:58.161] INFO: Indexer starting | chain=ethereum blocks=21,190,000-21,200,000 events=ERC20+ERC4626
+block=21190000-21190050 events=125
 ```
 
-### 2. Database Layer
+**Config:**
+- `config.chains.ethereum.rpcUrl` - RPC endpoint for head block
+- `config.chains.ethereum.sqdPortalUrl` - SQD Portal URL
+- `config.indexer.maxLookbackBlocks` - How far back to index (default: 10,000)
 
-**Location**: `src/db/`
+### 2. Database Layer (`src/db/`)
 
-**Schema Design**:
+**Schema:**
 
 ```sql
--- Events table (time-series optimized)
+-- Events table (with chain support)
 events (
-  id UUID,
-  block_number BIGINT,          -- Indexed for time queries
-  timestamp TIMESTAMP,           -- Indexed for window queries
-  event_type VARCHAR(50),        -- Indexed for filtering
-  contract_address VARCHAR(66),
-  market_id VARCHAR(66),         -- Indexed for market filtering
-  data JSONB,                    -- Flexible event data
-  transaction_hash VARCHAR(66),
-  log_index INTEGER,
-  UNIQUE(transaction_hash, log_index)  -- Prevent duplicates
+  id UUID PRIMARY KEY,
+  chain VARCHAR(20) NOT NULL DEFAULT 'ethereum',
+  block_number BIGINT NOT NULL,
+  timestamp TIMESTAMP NOT NULL,
+  event_type VARCHAR(50) NOT NULL,
+  contract_address VARCHAR(66) NOT NULL,
+  from_address VARCHAR(66),
+  to_address VARCHAR(66),
+  data JSONB NOT NULL,
+  transaction_hash VARCHAR(66) NOT NULL,
+  log_index INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(chain, transaction_hash, log_index)
 )
+
+-- Indexes
+idx_events_timestamp (timestamp)
+idx_events_event_type (event_type)
+idx_events_chain (chain)
+idx_events_composite (event_type, timestamp, chain)
 
 -- Subscriptions table
 subscriptions (
-  id UUID,
-  user_id VARCHAR(255),
-  name VARCHAR(255),
-  webhook_url TEXT,
-  meta_event_config JSONB,       -- Stores condition definitions
-  is_active BOOLEAN,
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP
+  id UUID PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  webhook_url TEXT NOT NULL,
+  meta_event_config JSONB NOT NULL,
+  cooldown_minutes INTEGER DEFAULT 1,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
 )
 
 -- Notifications log
 notifications_log (
-  id UUID,
-  subscription_id UUID,
-  triggered_at TIMESTAMP,
-  payload JSONB,
+  id UUID PRIMARY KEY,
+  subscription_id UUID REFERENCES subscriptions(id),
+  triggered_at TIMESTAMP NOT NULL,
+  payload JSONB NOT NULL,
   webhook_response_status INTEGER,
-  retry_count INTEGER
+  retry_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
 )
 ```
 
-**Repositories**:
-- `eventsRepository` - Event CRUD and time-window queries
-- `subscriptionsRepository` - Subscription management
+**Repositories:**
+- `eventsRepository` - Event queries with chain filtering
+- `subscriptionsRepository` - Subscription CRUD
 - `notificationsRepository` - Notification tracking
-- `cursorRepository` - Indexer state
 
-### 3. Meta-Event Detection Worker
+**Key Queries:**
 
-**Location**: `src/worker/`
-
-**Components**:
-
-#### Detector (`detector.ts`)
-- Parses time window strings (1h, 15m, 24h)
-- Evaluates conditions (>, <, >=, <=, =, !=)
-- Supports three detection types:
-  - `event_count`: Count events in time window
-  - `rolling_aggregate`: Aggregate field values (sum, avg, min, max)
-  - `threshold`: Similar to rolling_aggregate
-
-**Detection Algorithm**:
 ```typescript
-1. Parse window duration (e.g., "1h" → 60 minutes)
-2. Query events in time window from database
-3. Apply aggregation function if needed
-4. Evaluate condition (actual value vs threshold)
-5. Return detection result
+// Count events in time window for specific chain
+getEventCount(
+  eventType: EventType,
+  windowMinutes: number,
+  contracts?: string[],
+  contractAddress?: string,
+  fromAddress?: string,
+  toAddress?: string,
+  lookbackBlocks?: number,
+  chain?: string  // 'ethereum' or 'base'
+): Promise<number>
+
+// Aggregate field values in time window for specific chain
+getAggregatedValue(
+  eventType: EventType,
+  field: string,
+  aggregation: 'sum' | 'avg' | 'min' | 'max',
+  windowMinutes: number,
+  // ... same filters as getEventCount
+  chain?: string
+): Promise<number>
 ```
 
-#### Webhook Dispatcher (`webhook.ts`)
-- Sends HTTP POST to webhook URLs
-- Implements retry logic (3 attempts with backoff)
-- Logs delivery status to database
-- Supports batch dispatching
+**Block-based Lookback:**
+When `lookbackBlocks` is specified:
+1. Query: `SELECT MAX(block_number) FROM events WHERE event_type = ? AND chain = ?`
+2. Calculate: `minBlock = max(0, maxBlock - lookbackBlocks)`
+3. Use: `WHERE block_number >= minBlock AND chain = ?`
 
-**Webhook Flow**:
-```
-Detect Meta-Event → Build Payload → Send HTTP POST → Log Result
-                                         ↓ (if failed)
-                                    Retry with backoff
+This is more efficient than time-based queries for small windows.
+
+### 3. Meta-Event Detection Worker (`src/worker/`)
+
+**Purpose:** Check subscriptions every 30s and send webhooks when conditions met
+
+**Components:**
+
+#### Detector (`src/worker/detector.ts`)
+- Parses time windows: `1h` → 60 minutes, `15m` → 15 minutes, `1d` → 1440 minutes
+- Evaluates conditions: `>`, `<`, `>=`, `<=`, `=`, `!=`
+- Supports two detection types:
+  - **event_count**: Count events in window
+  - **rolling_aggregate**: Aggregate field values (sum/avg/min/max)
+
+**Detection Flow:**
+```typescript
+1. Parse config.window to minutes
+2. Extract chain from config (default: 'ethereum')
+3. Query database with chain filter
+4. For rolling_aggregate: Apply SQL aggregation function
+5. Compare actual value vs threshold
+6. Return { triggered: boolean, value, threshold, window }
 ```
 
-#### Worker Orchestrator (`index.ts`)
-- Runs on cron schedule (configurable, default 30s)
+**Multi-Contract Support:**
+When `contracts` array is provided, detector checks EACH contract individually and returns on FIRST match. This implements OR logic for monitoring multiple vaults.
+
+#### Webhook Dispatcher (`src/worker/webhook.ts`)
+- Sends HTTP POST to webhook URL
+- Retry logic: 3 attempts with exponential backoff
+- Special handling: 404 errors are NOT retried (bad URL)
+- Logs delivery status to `notifications_log`
+- Timeout: 10 seconds per request
+
+**Log Format (concise):**
+```
+[14:37:58.161] INFO: Worker starting | interval=30s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚨 META-EVENT TRIGGERED: "Base Vault Withdrawal"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Type: rolling_aggregate
+   Window: 1h
+   Value: 1500000000 (threshold: 1000000000)
+   Contract: 0xbeeF...
+   Webhook: https://webhook.site/...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   ❌ Webhook 404: https://bad-url.com/...
+```
+
+#### Worker Orchestrator (`src/worker/index.ts`)
+- Runs on cron: every 30 seconds (configurable)
 - Fetches active subscriptions
-- Checks cooldown period (1 min between notifications)
-- Coordinates detection and dispatch
-- Handles errors gracefully
+- Checks cooldown: `timeSince < (cooldown_minutes * 60 * 1000)`
+- Calls detector for each subscription
+- Dispatches webhooks in batch
+- Silent when no active subscriptions or in cooldown
 
-### 4. REST API
-
-**Location**: `src/api/`
-
-**Framework**: Express.js with TypeScript
-
-**Endpoints**:
-
-```
-POST   /api/subscriptions          - Create subscription
-GET    /api/subscriptions          - List subscriptions
-GET    /api/subscriptions/:id      - Get subscription
-PATCH  /api/subscriptions/:id      - Update subscription
-DELETE /api/subscriptions/:id      - Delete subscription
-GET    /api/subscriptions/:id/notifications - Get notification history
-
-GET    /api/events                 - Query events
-GET    /api/events/stats           - Get event statistics
-GET    /health                     - Health check
-```
-
-**Validation**: Zod schemas for type-safe request validation
-
-**CORS**: Enabled for all origins (development mode)
-
-## Data Flow Examples
-
-### Example 1: Event Indexing Flow
-
-```
-1. Morpho user calls withdraw() on Ethereum
-   ↓
-2. Transaction mined in block N
-   ↓
-3. SQD Portal ingests block N
-   ↓
-4. Indexer queries Portal with filters
-   ↓
-5. Portal returns matching Withdraw event
-   ↓
-6. Indexer decodes event using ABI
-   ↓
-7. Event inserted into PostgreSQL
-   {
-     event_type: 'morpho_withdraw',
-     market_id: '0x...',
-     data: { onBehalf: '0x...', assets: '1000000' },
-     block_number: N,
-     timestamp: ...
-   }
-   ↓
-8. Cursor updated to block N
-```
-
-### Example 2: Meta-Event Detection Flow
-
-```
-1. Worker wakes up (every 30s)
-   ↓
-2. Fetch active subscriptions from DB
-   ↓
-3. For each subscription:
-   a. Check cooldown period
-   b. Parse meta-event config
-   c. Query events in time window
-   d. Evaluate condition
-   ↓
-4. If condition met:
-   a. Fetch related events (last 50)
-   b. Build webhook payload
-   c. Send HTTP POST to webhook URL
-   d. Log notification in DB
-   ↓
-5. Sleep until next interval
-```
-
-### Example 3: User Creates Subscription
-
-```
-1. User sends POST to /api/subscriptions
-   {
-     "user_id": "alice",
-     "webhook_url": "https://...",
-     "meta_event_config": {
-       "type": "event_count",
-       "event_type": "morpho_withdraw",
-       "window": "1h",
-       "condition": { "operator": ">", "value": 25 }
-     }
-   }
-   ↓
-2. API validates request with Zod schema
-   ↓
-3. Repository creates subscription in DB
-   ↓
-4. API returns subscription with ID
-   ↓
-5. Worker picks up subscription on next cycle
-   ↓
-6. When condition met, webhook is triggered
-```
-
-## Meta-Event Types
-
-### 1. Event Count
-
-**Purpose**: Detect when event frequency exceeds threshold
-
-**Config**:
-```json
-{
-  "type": "event_count",
-  "event_type": "morpho_withdraw",
-  "window": "1h",
-  "condition": { "operator": ">", "value": 25 }
+**Cooldown Logic:**
+```typescript
+const lastNotification = await getLastNotificationTime(subscription.id);
+if (lastNotification) {
+  const cooldownMs = (subscription.cooldown_minutes ?? 1) * 60 * 1000;
+  const timeSince = Date.now() - lastNotification.getTime();
+  if (timeSince < cooldownMs) {
+    continue; // Skip, still in cooldown (silent)
+  }
 }
 ```
 
-**SQL Query**:
-```sql
-SELECT COUNT(*)
-FROM events
-WHERE event_type = 'morpho_withdraw'
-  AND timestamp >= NOW() - INTERVAL '1 hour'
+### 4. REST API (`src/api/`)
+
+**Framework:** Express.js with TypeScript
+
+**Endpoints:**
+
+```
+POST   /api/subscriptions               - Create subscription
+GET    /api/subscriptions               - List subscriptions (?user_id=...)
+GET    /api/subscriptions/:id           - Get subscription
+PATCH  /api/subscriptions/:id           - Update subscription
+DELETE /api/subscriptions/:id           - Delete subscription
+GET    /api/subscriptions/:id/notifications - Get notification history (?limit=50)
+GET    /health                          - Health check
 ```
 
-### 2. Rolling Aggregate
+**Validation:** Zod schemas in `src/api/validators.ts`
 
-**Purpose**: Detect when aggregated values exceed threshold
-
-**Config**:
+**Example Request:**
 ```json
+POST /api/subscriptions
 {
-  "type": "rolling_aggregate",
-  "event_type": "morpho_withdraw",
-  "aggregation": "sum",
-  "field": "assets",
-  "window": "1h",
-  "condition": { "operator": ">", "value": 1000000 }
+  "user_id": "alice",
+  "name": "Base Vault Monitor",
+  "webhook_url": "https://webhook.site/...",
+  "cooldown_minutes": 5,
+  "meta_event_config": {
+    "chain": "base",
+    "type": "rolling_aggregate",
+    "event_type": "erc4626_withdraw",
+    "contract_address": "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
+    "window": "1h",
+    "lookback_blocks": 300,
+    "aggregation": "sum",
+    "field": "assets",
+    "condition": {
+      "operator": ">",
+      "value": 1000000000
+    }
+  }
 }
 ```
 
-**SQL Query**:
-```sql
-SELECT SUM((data->>'assets')::numeric)
-FROM events
-WHERE event_type = 'morpho_withdraw'
-  AND timestamp >= NOW() - INTERVAL '1 hour'
+**Response:**
+```json
+{
+  "id": "uuid",
+  "user_id": "alice",
+  "name": "Base Vault Monitor",
+  "webhook_url": "https://webhook.site/...",
+  "cooldown_minutes": 5,
+  "meta_event_config": { ... },
+  "is_active": true,
+  "created_at": "2025-11-22T10:00:00Z",
+  "updated_at": "2025-11-22T10:00:00Z"
+}
 ```
 
-### 3. Threshold
+---
 
-**Purpose**: Similar to rolling_aggregate, may have specialized logic
+## Multi-Chain Implementation
 
-**Implementation**: Currently aliases to rolling_aggregate
+### Chain Configuration (`src/config/index.ts`)
 
-## Performance Optimizations
+```typescript
+export type ChainConfig = {
+  name: string;
+  rpcUrl: string;
+  sqdPortalUrl: string;
+};
+
+export const config = {
+  chains: {
+    ethereum: {
+      name: 'ethereum',
+      rpcUrl: process.env.ETHEREUM_RPC_URL ?? 'https://eth.llamarpc.com',
+      sqdPortalUrl: 'https://portal.sqd.dev/datasets/ethereum-mainnet',
+    },
+    base: {
+      name: 'base',
+      rpcUrl: process.env.BASE_RPC_URL ?? 'https://mainnet.base.org',
+      sqdPortalUrl: 'https://portal.sqd.dev/datasets/base-mainnet',
+    },
+  },
+  indexer: {
+    maxLookbackBlocks: parseInt(process.env.INDEXER_MAX_LOOKBACK_BLOCKS ?? '10000', 10),
+    useCache: process.env.INDEXER_USE_CACHE === 'true',
+    enabledChains: (process.env.INDEXER_ENABLED_CHAINS ?? 'ethereum,base').split(','),
+  },
+};
+```
+
+### Chain Defaults
+
+- All `MetaEventConfig` objects accept optional `chain` field
+- Default: `'ethereum'` if not specified
+- Events are tagged with chain: `{ chain: 'ethereum' | 'base', ... }`
+- All repository queries filter by chain: `WHERE chain = $1`
+
+### Block Time Differences
+
+| Chain | Block Time | Recommended lookback_blocks |
+|-------|------------|----------------------------|
+| Ethereum | ~12s | 100 blocks ≈ 20 min |
+| Base | ~2s | 300 blocks ≈ 10 min |
+
+**Why this matters:**
+- Block-based lookback is more efficient on Base due to consistent 2s blocks
+- Time-based windows can be less predictable on Ethereum (block time variance)
+- Always use `lookback_blocks` for small windows (< 1h) on both chains
+
+---
+
+## Event Types & Data Structures
+
+### Event Types
+
+```typescript
+export type EventType =
+  | 'erc20_transfer'
+  | 'erc4626_deposit'
+  | 'erc4626_withdraw';
+
+export type Event = {
+  id: string;
+  chain: string;              // 'ethereum' | 'base'
+  block_number: number;
+  timestamp: Date;
+  event_type: EventType;
+  contract_address: string;
+  from_address: string | null;
+  to_address: string | null;
+  data: Record<string, unknown>;  // JSONB
+  transaction_hash: string;
+  log_index: number;
+  created_at: Date;
+};
+```
+
+### Event Data Formats
+
+**ERC20 Transfer:**
+```json
+{
+  "from": "0x...",
+  "to": "0x...",
+  "value": "1000000000000"
+}
+```
+
+**ERC4626 Deposit:**
+```json
+{
+  "sender": "0x...",
+  "owner": "0x...",
+  "assets": "1000000000000",
+  "shares": "1000000000000"
+}
+```
+
+**ERC4626 Withdraw:**
+```json
+{
+  "sender": "0x...",
+  "receiver": "0x...",
+  "owner": "0x...",
+  "assets": "1000000000000",
+  "shares": "1000000000000"
+}
+```
+
+### Meta-Event Config
+
+```typescript
+export type MetaEventConfig = {
+  chain?: string;                    // 'ethereum' | 'base' (default: 'ethereum')
+  type: 'event_count' | 'rolling_aggregate';
+  event_type: EventType;
+  contracts?: string[];              // OR logic: check ANY contract
+  contract_address?: string;         // Single contract
+  from_address?: string;             // Filter by sender
+  to_address?: string;               // Filter by receiver
+  window: string;                    // '1h', '15m', '24h', etc.
+  lookback_blocks?: number;          // Override time-based with block-based
+  aggregation?: 'sum' | 'avg' | 'min' | 'max';  // For rolling_aggregate
+  field?: string;                    // Field to aggregate ('assets', 'value', etc.)
+  condition: {
+    operator: '>' | '<' | '>=' | '<=' | '=' | '!=';
+    value: number;
+  };
+};
+
+export type Subscription = {
+  id: string;
+  user_id: string;
+  name: string;
+  webhook_url: string;
+  meta_event_config: MetaEventConfig;
+  cooldown_minutes?: number;        // Default: 1
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+};
+```
+
+### Webhook Payload
+
+```typescript
+export type WebhookPayload = {
+  subscription_id: string;
+  subscription_name: string;
+  triggered_at: string;  // ISO 8601
+  meta_event: {
+    type: 'event_count' | 'rolling_aggregate';
+    condition_met: true;
+    aggregated_value?: number;      // For rolling_aggregate
+    event_count?: number;            // For event_count
+    threshold: number;
+    window: string;
+    triggered_by_contract?: string;  // If using multi-contract
+  };
+};
+```
+
+---
+
+## Configuration & Environment
+
+### Environment Variables (`.env`)
+
+```bash
+# Database
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/telltide
+
+# API
+API_PORT=3000
+API_HOST=0.0.0.0
+
+# Worker
+WORKER_INTERVAL_SECONDS=30
+
+# RPC URLs (for getting current block head)
+ETHEREUM_RPC_URL=https://eth.llamarpc.com
+BASE_RPC_URL=https://mainnet.base.org
+
+# Indexer
+INDEXER_MAX_LOOKBACK_BLOCKS=10000
+INDEXER_USE_CACHE=false
+INDEXER_ENABLED_CHAINS=ethereum,base
+
+# Logging
+LOG_LEVEL=info
+```
+
+### Scripts (`package.json`)
+
+```json
+{
+  "scripts": {
+    "dev": "concurrently \"pnpm indexer\" \"pnpm worker\" \"pnpm api\"",
+    "indexer": "tsx src/indexer/index.ts",
+    "worker": "tsx src/worker/index.ts",
+    "api": "tsx src/api/index.ts",
+    "db:migrate": "tsx src/db/schema.ts",
+    "db:migrate:chain": "tsx src/db/migrate-chain.ts",
+    "db:clean": "tsx src/db/clean-db.ts",
+    "db:clean-subs": "tsx src/db/clean-subscriptions.ts",
+    "db:insert-subs": "tsx src/db/insert-subscriptions.ts"
+  }
+}
+```
+
+---
+
+## Common Operations
+
+### Setup from Scratch
+
+```bash
+# 1. Install dependencies
+pnpm install
+
+# 2. Start PostgreSQL
+docker compose up -d
+
+# 3. Run schema migration
+pnpm db:migrate
+
+# 4. Run chain migration (adds chain + cooldown_minutes)
+pnpm db:migrate:chain
+
+# 5. Start all services
+pnpm dev
+```
+
+### Create Subscription (cURL)
+
+```bash
+curl -X POST http://localhost:3000/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "alice",
+    "name": "High USDC Activity",
+    "webhook_url": "https://webhook.site/your-url",
+    "cooldown_minutes": 5,
+    "meta_event_config": {
+      "chain": "ethereum",
+      "type": "event_count",
+      "event_type": "erc20_transfer",
+      "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "window": "15m",
+      "lookback_blocks": 100,
+      "condition": {
+        "operator": ">",
+        "value": 50
+      }
+    }
+  }'
+```
+
+### Insert Test Subscriptions
+
+```bash
+# 1. Edit src/db/insert-subscriptions.ts
+#    - Set your webhook.site URL (line 11)
+#    - Uncomment desired subscriptions
+
+# 2. Run insertion script
+pnpm db:insert-subs
+```
+
+### Clean Database (preserves schema)
+
+```bash
+# Option 1: Clean everything
+pnpm db:clean
+
+# Option 2: Clean only subscriptions/notifications (keep events)
+pnpm db:clean-subs
+```
+
+### Connect to PostgreSQL
+
+```bash
+docker exec -it telltide-postgres psql -U postgres -d telltide
+
+# Useful queries
+\d events                    -- Show events table schema
+\d subscriptions             -- Show subscriptions table schema
+SELECT COUNT(*) FROM events; -- Count events
+SELECT * FROM subscriptions; -- List subscriptions
+```
+
+---
+
+## Design Decisions & Rationale
+
+### 1. Why JSONB for event data?
+
+**Decision:** Store decoded event data as JSONB instead of separate columns
+
+**Rationale:**
+- Flexibility: Different event types have different fields
+- No schema changes needed for new event types
+- PostgreSQL JSONB is indexed and queryable
+- Can extract fields via `(data->>'field')::numeric`
+
+**Trade-off:** Slightly slower than native columns, but acceptable for this use case
+
+### 2. Why block-based lookback?
+
+**Decision:** Support `lookback_blocks` in addition to time-based windows
+
+**Rationale:**
+- More predictable performance (scan N blocks vs time range)
+- Better for testing (limit data scanned)
+- More efficient on chains with fast/consistent block times (Base)
+- Avoids edge cases with block time variance
+
+**Implementation:**
+```sql
+-- Instead of:
+WHERE timestamp >= NOW() - INTERVAL '1 hour'
+
+-- Use:
+WHERE block_number >= (MAX(block_number) - 300) AND chain = 'base'
+```
+
+### 3. Why per-subscription cooldowns?
+
+**Decision:** Each subscription has its own `cooldown_minutes` field
+
+**Rationale:**
+- Different use cases need different notification frequencies
+- Critical alerts: 1 minute cooldown
+- Non-urgent monitoring: 60 minute cooldown
+- User control over notification spam
+- Tracked in database for persistence across restarts
+
+### 4. Why dynamic start block calculation?
+
+**Decision:** Calculate start block on every indexer startup instead of hardcoding
+
+**Rationale:**
+- Always get recent data without manual configuration
+- Automatically adjusts to current blockchain state
+- No stale data issues from old start blocks
+- Simple: `start = max(1, currentHead - maxLookbackBlocks)`
+
+**Trade-off:** Requires RPC call on startup, but only once
+
+### 5. Why multi-contract OR logic?
+
+**Decision:** When `contracts` array is provided, check each contract and return on first match
+
+**Rationale:**
+- Common use case: "Alert if ANY of these vaults has high withdrawals"
+- Efficient: Stop checking once one matches
+- Simple to understand: OR logic is intuitive
+- Payload includes `triggered_by_contract` for clarity
+
+**Example:**
+```typescript
+for (const contract of contracts) {
+  const value = await getAggregatedValue(..., contract);
+  if (conditionMet(value)) {
+    return { triggered: true, triggeredByContract: contract };
+  }
+}
+```
+
+### 6. Why silent cooldown?
+
+**Decision:** Don't log when subscription is in cooldown period
+
+**Rationale:**
+- Reduces log noise significantly
+- Cooldown is expected behavior, not an error
+- Logs should focus on important events (triggers, errors)
+- User can check `notifications_log` table for history
+
+### 7. Why concise logs?
+
+**Decision:** Use single-line log format with timestamps
+
+**Rationale:**
+- Easy to scan for important events
+- Similar to industry standard (SQD indexer format)
+- Timestamp with milliseconds for debugging
+- Key metrics on one line: `block=X-Y events=N`
+
+**Format:**
+```
+[14:37:58.161] INFO: message | key=value key2=value2
+```
+
+---
+
+## Performance Considerations
 
 ### Database Indexes
 
+All queries use indexes efficiently:
+
 ```sql
--- Time-series queries
-CREATE INDEX idx_events_timestamp ON events(timestamp);
+-- Time-based queries
+WHERE timestamp >= NOW() - INTERVAL '1 hour'
+  AND event_type = 'erc20_transfer'
+  AND chain = 'ethereum'
+-- Uses: idx_events_composite(event_type, timestamp, chain)
 
--- Event type filtering
-CREATE INDEX idx_events_event_type ON events(event_type);
-
--- Market-specific queries
-CREATE INDEX idx_events_market_id ON events(market_id);
-
--- Composite index for common query pattern
-CREATE INDEX idx_events_composite ON events(event_type, timestamp, market_id);
+-- Block-based queries
+WHERE block_number >= 21190000
+  AND event_type = 'erc4626_withdraw'
+  AND chain = 'base'
+-- Uses: idx_events_composite + idx_events_chain
 ```
 
-### Query Optimizations
+### Query Optimization
 
-1. **Batch Inserts**: Events inserted in batches, not individually
-2. **JSONB Storage**: Flexible schema without additional columns
-3. **Window Functions**: PostgreSQL window functions for aggregations
-4. **Cursor Management**: Avoid re-processing blocks
-
-### Caching
-
-- **Portal Cache**: Optional SQLite cache for Portal responses (development)
-- **Connection Pooling**: PostgreSQL connection pool for efficiency
-
-## Scalability Considerations
-
-### Current Limitations (MVP)
-
-- Single-threaded worker (30s polling interval)
-- No horizontal scaling
-- All events stored (no pruning)
-- Simple retry logic (3 attempts)
-
-### Future Improvements
-
-- **Worker**: Use job queue (Bull, BullMQ) for parallel processing
-- **Database**: Partition events table by timestamp
-- **Caching**: Add Redis for hot path queries
-- **Webhooks**: Implement exponential backoff, dead letter queue
-- **Monitoring**: Add Prometheus metrics, Grafana dashboards
-- **Rate Limiting**: Prevent abuse of API endpoints
-
-## Security Considerations
-
-### Current State (Development)
-
-- ✅ Input validation with Zod
-- ✅ PostgreSQL parameterized queries (SQL injection prevention)
-- ⚠️ No authentication/authorization
-- ⚠️ No rate limiting
-- ⚠️ CORS wide open
-- ⚠️ No webhook signature verification
-
-### Production Requirements
-
-- [ ] Add API key authentication
-- [ ] Implement rate limiting (per user/IP)
-- [ ] Configure CORS properly
-- [ ] Add webhook signature (HMAC)
-- [ ] Use HTTPS only
-- [ ] Add input sanitization
-- [ ] Implement request logging/audit trail
-
-## Deployment Architecture
-
-### Development
-
+**Event Count:**
+```sql
+SELECT COUNT(*)
+FROM events
+WHERE event_type = $1
+  AND block_number >= $2
+  AND chain = $3
+  AND contract_address = $4;
 ```
-┌─────────────────────────────────────┐
-│  Developer Machine                  │
-│  ┌────────────┐  ┌────────────┐    │
-│  │  Indexer   │  │   Worker   │    │
-│  └────────────┘  └────────────┘    │
-│  ┌────────────┐                     │
-│  │    API     │                     │
-│  └────────────┘                     │
-└──────────┬──────────────────────────┘
-           │
-           ▼
-┌─────────────────────────────────────┐
-│  Docker Container                   │
-│  PostgreSQL                         │
-└─────────────────────────────────────┘
-```
+- Index scan on composite index
+- No table scan needed
+- Efficient even with millions of rows
 
-### Production (Recommended)
-
+**Aggregation:**
+```sql
+SELECT SUM((data->>'assets')::numeric)
+FROM events
+WHERE event_type = $1
+  AND block_number >= $2
+  AND chain = $3
+  AND contract_address = $4;
 ```
-┌─────────────────────────────────────────────────────┐
-│  Load Balancer                                      │
-└──────────────┬──────────────────────────────────────┘
-               │
-       ┌───────┴────────┐
-       ▼                ▼
-┌──────────────┐  ┌──────────────┐
-│  API Server  │  │  API Server  │  (Horizontal scaling)
-└──────────────┘  └──────────────┘
-       │                │
-       └────────┬───────┘
-                ▼
-┌─────────────────────────────────────┐
-│  Managed PostgreSQL                 │
-│  (AWS RDS, GCP Cloud SQL, etc.)     │
-└─────────────────────────────────────┘
-                ▲
-                │
-       ┌────────┴────────┐
-       ▼                 ▼
-┌──────────────┐  ┌──────────────┐
-│   Indexer    │  │    Worker    │
-│  (Dedicated) │  │  (Dedicated) │
-└──────────────┘  └──────────────┘
+- JSONB field extraction is optimized in PostgreSQL
+- Index scan limits rows before aggregation
+- Parallel aggregation on large datasets
+
+### Batch Processing
+
+**Indexer:**
+- Inserts events in batches of 500
+- Uses PostgreSQL's `VALUES (row1), (row2), ...` for efficiency
+- `ON CONFLICT DO NOTHING` prevents duplicates
+- ~10-100x faster than individual inserts
+
+**Worker:**
+- Checks all subscriptions in parallel (Promise.allSettled)
+- Dispatches webhooks in batch
+- Graceful error handling (one failure doesn't stop others)
+
+---
+
+## Error Handling & Edge Cases
+
+### 1. Blockchain Forks
+
+**Problem:** Chain reorganizations can invalidate recent blocks
+
+**Solution:** SQD Pipes SDK handles forks automatically via cursor management
+- Cursor stores last processed block
+- On fork detection, rolls back to safe block
+- Re-processes affected blocks
+- No manual intervention needed
+
+### 2. Duplicate Events
+
+**Problem:** Same event might be indexed multiple times
+
+**Solution:** Unique constraint on `(chain, transaction_hash, log_index)`
+- Database enforces uniqueness
+- `ON CONFLICT DO NOTHING` in insert queries
+- No duplicate events in database
+
+### 3. Webhook 404 Errors
+
+**Problem:** User provides invalid webhook URL
+
+**Solution:** Special handling for 404 responses
+- Don't retry 404s (bad URL, not transient error)
+- Log concise error: `❌ Webhook 404: https://...`
+- User can check logs or notification history
+
+### 4. Indexer Crashes
+
+**Problem:** Indexer stops mid-processing
+
+**Solution:** Cursor management ensures resumable indexing
+- Cursor updated after each successful batch
+- On restart, resume from last cursor position
+- No events lost or re-processed
+
+### 5. Worker Overlap
+
+**Problem:** Previous worker cycle still running when next one starts
+
+**Solution:** Simple lock mechanism
+```typescript
+if (this.isRunning) {
+  return; // Skip this cycle
+}
+this.isRunning = true;
+try {
+  // ... process subscriptions
+} finally {
+  this.isRunning = false;
+}
 ```
 
-## Technology Stack Summary
+### 6. Database Connection Loss
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| Blockchain Data | SQD Portal API | Fast blockchain data access |
-| Indexing | SQD Pipes SDK | Event streaming & processing |
-| Database | PostgreSQL 16 | Event storage & queries |
-| API | Express.js | REST API endpoints |
-| Validation | Zod | Type-safe request validation |
-| Runtime | Node.js 18+ | JavaScript runtime |
-| Language | TypeScript | Type safety |
-| Scheduling | node-cron | Worker scheduling |
-| HTTP Client | Axios | Webhook delivery |
-| Container | Docker | PostgreSQL containerization |
+**Problem:** PostgreSQL connection drops during operation
 
-## Monitoring & Observability
+**Solution:**
+- Connection pool with retry logic (from `pg` library)
+- Each repository function catches errors
+- Worker continues on next cycle
+- Logs error for debugging
 
-### Current Logging
+---
 
-- Console logs with timestamps
-- Request logging in API
-- Worker execution logs
-- Webhook delivery logs
+## Testing & Development
 
-### Recommended Additions
+### Local Development Setup
 
-- **Structured Logging**: Use Pino or Winston
-- **Metrics**: Prometheus metrics
-  - Events indexed per second
-  - Webhook success/failure rate
-  - Detection latency
-  - API request rate
-- **Tracing**: OpenTelemetry for distributed tracing
-- **Alerting**: PagerDuty/Opsgenie for critical failures
+```bash
+# 1. Start PostgreSQL
+docker compose up -d
+
+# 2. Run migrations
+pnpm db:migrate
+pnpm db:migrate:chain
+
+# 3. Insert test subscriptions
+pnpm db:insert-subs
+
+# 4. Start services in separate terminals
+pnpm indexer   # Terminal 1
+pnpm worker    # Terminal 2
+pnpm api       # Terminal 3
+
+# 5. Get webhook test URL
+# Visit https://webhook.site to get a unique URL
+# Update subscriptions with this URL
+```
+
+### Testing Subscriptions
+
+**Option 1: Use real contracts on mainnet**
+```json
+{
+  "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",  // Real USDC
+  "event_type": "erc20_transfer",
+  "window": "15m",
+  "condition": { "operator": ">", "value": 50 }
+}
+```
+
+**Option 2: Use Base testnet vault**
+```json
+{
+  "chain": "base",
+  "contract_address": "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
+  "event_type": "erc4626_deposit",
+  "lookback_blocks": 300,
+  "condition": { "operator": ">", "value": 5 }
+}
+```
+
+**Option 3: Lower thresholds for testing**
+```json
+{
+  "condition": { "operator": ">", "value": 1 }  // Triggers easily
+}
+```
+
+### Debugging
+
+**Check indexer is running:**
+```bash
+# Should see events being inserted
+# Look for: block=X-Y events=N
+```
+
+**Check worker is running:**
+```bash
+# Should see startup message
+# [HH:MM:SS.mmm] INFO: Worker starting | interval=30s
+```
+
+**Check subscriptions are active:**
+```sql
+SELECT id, name, is_active FROM subscriptions;
+```
+
+**Check notification history:**
+```sql
+SELECT
+  s.name,
+  nl.triggered_at,
+  nl.webhook_response_status,
+  nl.retry_count
+FROM notifications_log nl
+JOIN subscriptions s ON nl.subscription_id = s.id
+ORDER BY nl.triggered_at DESC
+LIMIT 10;
+```
+
+---
+
+## Migration Guide
+
+### Adding Multi-Chain Support to Existing Database
+
+If you have an existing database without chain support:
+
+```bash
+pnpm db:migrate:chain
+```
+
+This runs `src/db/migrations/add-chain-and-cooldown.sql`:
+- ✅ Adds `chain` column to events (defaults to 'ethereum')
+- ✅ Adds `cooldown_minutes` to subscriptions (defaults to 1)
+- ✅ Updates unique constraint to include chain
+- ✅ Adds chain indexes for performance
+- ✅ Idempotent (safe to run multiple times)
+- ✅ Preserves all existing data
+
+---
 
 ## Future Enhancements
 
-1. **Web Dashboard**: React UI for managing subscriptions
-2. **Multi-Chain Support**: Extend to other EVM chains
-3. **Advanced Aggregations**: Percentiles, standard deviation, etc.
-4. **Event Replay**: Historical backtesting of meta-events
-5. **Webhook Templates**: Pre-built integrations (Slack, Discord, Telegram)
-6. **API Keys**: User authentication system
-7. **Subscription Sharing**: Team/organization management
-8. **Event Filtering**: More granular filtering options
-9. **Real-time Updates**: WebSocket support for live notifications
-10. **Factory Pattern**: Auto-discover new Morpho markets
+### Short-term (Next Sprint)
+
+1. **Multi-chain indexer** - Run separate indexer per chain
+2. **API pagination** - Add limit/offset to GET /subscriptions
+3. **Event pruning** - Auto-delete events older than N days
+4. **Health check enhancements** - Include DB status, indexer status
+
+### Medium-term
+
+1. **More chains** - Arbitrum, Optimism, Polygon
+2. **More event types** - Uniswap swaps, Aave borrows, etc.
+3. **Advanced aggregations** - Percentiles, standard deviation
+4. **Webhook templates** - Slack, Discord, Telegram integrations
+5. **Historical backtesting** - Test meta-events on past data
+
+### Long-term
+
+1. **Web dashboard** - React UI for managing subscriptions
+2. **User authentication** - API keys, OAuth
+3. **Team/organization support** - Share subscriptions
+4. **Real-time WebSocket** - Live notifications without webhooks
+5. **Rate limiting** - Prevent abuse
+6. **Monitoring** - Prometheus metrics, Grafana dashboards
+
+---
+
+## Deployment Considerations
+
+### Environment-specific Configs
+
+**Development:**
+```env
+INDEXER_MAX_LOOKBACK_BLOCKS=10000
+WORKER_INTERVAL_SECONDS=30
+INDEXER_USE_CACHE=true
+```
+
+**Production:**
+```env
+INDEXER_MAX_LOOKBACK_BLOCKS=60000
+WORKER_INTERVAL_SECONDS=10
+INDEXER_USE_CACHE=false
+```
+
+---
+
+## Key Files Reference
+
+### Core Source Files
+
+| File | Purpose | Key Functions |
+|------|---------|---------------|
+| `src/indexer/index.ts` | Event indexing | Fetches head block, streams events, batch insert |
+| `src/worker/detector.ts` | Meta-event detection | `detect()`, `parseWindow()`, `evaluateCondition()` |
+| `src/worker/webhook.ts` | Webhook delivery | `dispatch()`, retry logic, error handling |
+| `src/worker/index.ts` | Worker orchestration | Cron scheduling, cooldown check, batch dispatch |
+| `src/api/index.ts` | REST API routes | Express routes, CORS, error handling |
+| `src/api/validators.ts` | Request validation | Zod schemas for subscriptions |
+| `src/db/repositories/events.ts` | Event queries | `getEventCount()`, `getAggregatedValue()` |
+| `src/db/repositories/subscriptions.ts` | Subscription CRUD | `createSubscription()`, `getActiveSubscriptions()` |
+| `src/db/repositories/notifications.ts` | Notification tracking | `createNotificationLog()`, `getLastNotificationTime()` |
+| `src/config/index.ts` | Configuration | Chain configs, environment variables |
+| `src/types/index.ts` | Type definitions | All TypeScript types |
+
+### Database Files
+
+| File | Purpose |
+|------|---------|
+| `src/db/schema.ts` | Initial schema creation |
+| `src/db/migrations/add-chain-and-cooldown.sql` | Multi-chain migration |
+| `src/db/migrate-chain.ts` | Migration runner |
+| `src/db/clean-db.ts` | Clean all data |
+| `src/db/clean-subscriptions.ts` | Clean subscriptions only |
+| `src/db/insert-subscriptions.ts` | Insert test subscriptions |
+
+### Documentation
+
+| File | Purpose |
+|------|---------|
+| `README.md` | Quick start guide |
+| `API.md` | Complete API documentation |
+| `ARCHITECTURE.md` | This file - comprehensive reference |
+| `MIGRATION.md` | Chain migration guide |
+| `.env.example` | Environment variable template |
+
+---
+
+## AI Assistant Guidelines
+
+**When helping with TellTide:**
+
+1. **Always consider multi-chain context**
+   - Events are tagged with `chain`
+   - All queries must filter by chain
+   - Default is 'ethereum' if not specified
+
+2. **Understand cooldown behavior**
+   - Per-subscription, configurable
+   - Silent when in cooldown (no logs)
+   - Tracked in `notifications_log.triggered_at`
+
+3. **Use block-based lookback for small windows**
+   - More efficient than time-based
+   - Especially on Base with 2s blocks
+   - Formula: `minBlock = maxBlock - lookbackBlocks`
+
+4. **Follow concise log format**
+   - `[HH:MM:SS.mmm] LEVEL: message | key=value`
+   - Single-line for processing logs
+   - Multi-line only for dramatic events (triggers, errors)
+
+5. **Respect type safety**
+   - All types defined in `src/types/index.ts`
+   - Use Zod for validation
+   - No `any` types
+
+6. **Database patterns**
+   - Use repositories, not direct queries
+   - All filters include chain parameter
+   - JSONB for flexible event data
+   - Batch operations where possible
+
+7. **Error handling**
+   - Graceful degradation (don't crash on errors)
+   - Log errors but continue processing
+   - Special cases: 404 webhooks, DB connection loss
+
+---
+
+**End of Architecture Document**
+
+*Last Updated: 2025-11-22*
+*Version: 1.0 (Multi-chain + Cooldown)*

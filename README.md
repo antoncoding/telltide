@@ -18,32 +18,36 @@
 
 ## What is TellTide?
 
-TellTide monitors ERC20 transfers and ERC4626 vault events (deposits/withdrawals) and alerts you when **aggregated conditions** are met. Instead of tracking individual transactions, subscribe to meaningful signals like:
+TellTide monitors ERC20 transfers and ERC4626 vault events (deposits/withdrawals) across **Ethereum and Base** and alerts you when **aggregated conditions** are met. Instead of tracking individual transactions, subscribe to meaningful signals like:
 
 - 🚨 "Alert when total withdrawals from any of these 3 vaults exceed 1M USDC in 2 hours"
 - 📊 "Notify when more than 50 USDC transfers occur in 15 minutes"
-- 🔔 "Trigger when average deposit size falls below 10K USDC in 1 hour"
+- 🔔 "Trigger when Base vault has high deposit activity in last 300 blocks"
+- 🐋 "Track whale movements across Ethereum mainnet"
 
 Perfect for monitoring DeFi protocols, tracking whale movements, and detecting unusual on-chain activity.
 
 ## Key Features
 
-- ⚡ **Real-time Indexing** - Uses SQD Pipes SDK to index ERC20 and ERC4626 events from Ethereum
+- ⚡ **Real-time Indexing** - Uses SQD Pipes SDK to index ERC20 and ERC4626 events
+- 🌐 **Multi-Chain Support** - Ethereum Mainnet + Base Mainnet
 - 🎯 **Meta-Event Detection** - Create conditions on rolling time windows with aggregations (sum, avg, count, etc.)
+- 📦 **Block-Based Lookback** - Efficient queries using recent blocks instead of time windows
 - 🔗 **Webhook Notifications** - Automatic HTTP POST to your endpoint with retry logic
+- ⏱️ **Cooldown Control** - Per-subscription cooldown periods to prevent notification spam
 - 🗃️ **PostgreSQL Storage** - Efficient event storage with time-based queries
 - 🔧 **Simple REST API** - Easy subscription management
 
 ## Architecture
 
 ```
-Ethereum Blockchain (ERC20 + ERC4626)
+Ethereum + Base Blockchains (ERC20 + ERC4626)
          ↓
     SQD Portal API (fast historical data)
          ↓
-  TellTide Indexer (stores last 7 days)
+  TellTide Indexer (dynamic lookback)
          ↓
-    PostgreSQL Database
+    PostgreSQL Database (chain-tagged events)
          ↓
   Detection Worker (checks every 30s)
          ↓
@@ -123,7 +127,9 @@ curl -X POST http://localhost:3000/api/subscriptions \
     "user_id": "alice",
     "name": "High Vault Withdrawal Alert",
     "webhook_url": "https://webhook.site/your-unique-url",
+    "cooldown_minutes": 5,
     "meta_event_config": {
+      "chain": "ethereum",
       "type": "rolling_aggregate",
       "event_type": "erc4626_withdraw",
       "contracts": [
@@ -142,13 +148,14 @@ curl -X POST http://localhost:3000/api/subscriptions \
   }'
 ```
 
-**This triggers when**: Any of the 3 vaults has total withdrawals exceeding 1M USDC (assuming 6 decimals) in the last 2 hours.
+**This triggers when**: Any of the 3 vaults on Ethereum has total withdrawals exceeding 1M USDC (assuming 6 decimals) in the last 2 hours. Won't send another notification for 5 minutes after triggering.
 
 ### Example Use Cases
 
-**1. Monitor ERC20 Transfer Spike**
+**1. Monitor ERC20 Transfer Spike on Ethereum**
 ```json
 {
+  "chain": "ethereum",
   "type": "event_count",
   "event_type": "erc20_transfer",
   "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -159,15 +166,17 @@ curl -X POST http://localhost:3000/api/subscriptions \
   }
 }
 ```
-Triggers when USDC has more than 50 transfers in 15 minutes.
+Triggers when USDC has more than 50 transfers in 15 minutes on Ethereum.
 
-**2. Track Deposits to Specific Vault**
+**2. Track Deposits to Specific Vault on Base**
 ```json
 {
+  "chain": "base",
   "type": "rolling_aggregate",
   "event_type": "erc4626_deposit",
-  "contract_address": "0xYourVault...",
+  "contract_address": "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
   "window": "1h",
+  "lookback_blocks": 300,
   "aggregation": "sum",
   "field": "assets",
   "condition": {
@@ -176,11 +185,12 @@ Triggers when USDC has more than 50 transfers in 15 minutes.
   }
 }
 ```
-Triggers when total deposits exceed 10K USDC (6 decimals) in 1 hour.
+Triggers when total deposits exceed 10K tokens in 1 hour on Base. Uses last 300 blocks (~10 min on Base).
 
 **3. Monitor Withdrawals from ANY of Multiple Vaults**
 ```json
 {
+  "chain": "ethereum",
   "type": "rolling_aggregate",
   "event_type": "erc4626_withdraw",
   "contracts": ["0xVault1...", "0xVault2...", "0xVault3..."],
@@ -195,21 +205,22 @@ Triggers when total deposits exceed 10K USDC (6 decimals) in 1 hour.
 ```
 Triggers when ANY of the 3 vaults exceeds 1M USDC withdrawn in 2 hours.
 
-**4. Use Block-Based Lookback for Efficiency**
+**4. Use Block-Based Lookback for Efficiency (Base)**
 ```json
 {
+  "chain": "base",
   "type": "event_count",
   "event_type": "erc20_transfer",
   "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   "window": "1m",
-  "lookback_blocks": 100,
+  "lookback_blocks": 300,
   "condition": {
     "operator": ">",
     "value": 5
   }
 }
 ```
-Triggers when USDC has more than 5 transfers in the last 100 blocks. Using `lookback_blocks` makes queries more efficient for small time windows by only scanning recent blocks instead of using time-based lookups.
+Triggers when USDC has more than 5 transfers in the last 300 blocks on Base (~10 minutes with 2s blocks). Using `lookback_blocks` makes queries more efficient by scanning recent blocks instead of time ranges.
 
 ### Webhook Payload
 
@@ -261,9 +272,10 @@ Key environment variables (see `.env.example`):
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/telltide` |
 | `API_PORT` | API server port | `3000` |
 | `WORKER_INTERVAL_SECONDS` | How often to check subscriptions | `30` |
-| `RPC_URL` | Ethereum RPC endpoint for getting current block | `https://eth.llamarpc.com` |
-| `INDEXER_MAX_LOOKBACK_BLOCKS` | Max blocks back from chain head | `60000` (~7 days) |
-| `SQD_PORTAL_URL` | SQD Portal endpoint | `https://portal.sqd.dev/datasets/ethereum-mainnet` |
+| `ETHEREUM_RPC_URL` | Ethereum RPC endpoint for getting current block | `https://eth.llamarpc.com` |
+| `BASE_RPC_URL` | Base RPC endpoint for getting current block | `https://mainnet.base.org` |
+| `INDEXER_MAX_LOOKBACK_BLOCKS` | Max blocks back from chain head | `10000` |
+| `INDEXER_ENABLED_CHAINS` | Comma-separated list of chains to index | `ethereum,base` |
 
 **Note on indexing:** The indexer **dynamically** calculates the start block on every startup by fetching the current blockchain head via RPC and going back `MAX_LOOKBACK_BLOCKS`. This ensures you always have recent data without manual configuration. Duplicate events are automatically skipped.
 

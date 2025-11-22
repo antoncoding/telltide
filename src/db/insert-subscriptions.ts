@@ -115,11 +115,11 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
       type: 'event_count',
       event_type: 'erc4626_deposit',
       contract_address: '0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183', // Vault on Base
-      window: '1h',
+      window: '3m',
       lookback_blocks: 300, // ~10 minutes on Base (2s blocks)
       condition: {
         operator: '>',
-        value: 5, // More than 5 deposits
+        value: 2, // More than 5 deposits
       },
     },
   },
