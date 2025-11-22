@@ -2,7 +2,6 @@ import express from 'express';
 import { config } from '../config/index.js';
 import { testConnection } from '../db/client.js';
 import subscriptionsRouter from './routes/subscriptions.js';
-import eventsRouter from './routes/events.js';
 
 const app = express();
 
@@ -36,7 +35,6 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/subscriptions', subscriptionsRouter);
-app.use('/api/events', eventsRouter);
 
 // 404 handler
 app.use((req, res) => {
@@ -61,8 +59,7 @@ async function main() {
   app.listen(config.api.port, config.api.host, () => {
     console.log(`✅ API Server running on http://${config.api.host}:${config.api.port}`);
     console.log(`📡 Health check: http://${config.api.host}:${config.api.port}/health`);
-    console.log(`📋 Subscriptions: http://${config.api.host}:${config.api.port}/api/subscriptions`);
-    console.log(`📊 Events: http://${config.api.host}:${config.api.port}/api/events\n`);
+    console.log(`📋 Subscriptions: http://${config.api.host}:${config.api.port}/api/subscriptions\n`);
   });
 }
 

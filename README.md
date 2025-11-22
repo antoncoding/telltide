@@ -217,31 +217,22 @@ When triggered, your webhook receives:
 
 ---
 
-## 🔌 API Reference
+## 📡 API Reference
+
+**Full API Documentation:** See [API.md](./API.md) for complete endpoint documentation, request/response formats, and examples.
+
+**Quick Overview:**
 
 ### Subscriptions
+- `POST /api/subscriptions` - Create a new meta-event subscription
+- `GET /api/subscriptions` - List all subscriptions
+- `GET /api/subscriptions/:id` - Get subscription details
+- `PATCH /api/subscriptions/:id` - Update subscription
+- `DELETE /api/subscriptions/:id` - Delete subscription
+- `GET /api/subscriptions/:id/notifications` - Get notification history
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/subscriptions` | Create a new subscription |
-| `GET` | `/api/subscriptions` | List all subscriptions (filter by `?user_id=`) |
-| `GET` | `/api/subscriptions/:id` | Get subscription details |
-| `PATCH` | `/api/subscriptions/:id` | Update subscription |
-| `DELETE` | `/api/subscriptions/:id` | Delete subscription |
-| `GET` | `/api/subscriptions/:id/notifications` | Get notification history |
-
-### Events
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/events` | Query recent events (filter by type, contract, block range) |
-| `GET` | `/api/events/stats` | Get event statistics |
-
-### Health Check
-
-```bash
-curl http://localhost:3000/health
-```
+### Health
+- `GET /health` - Health check endpoint
 
 ---
 
@@ -296,11 +287,18 @@ Use [webhook.site](https://webhook.site) to get a test webhook URL.
 ## 🎯 Meta-Event Types
 
 - **`event_count`** - Count events in time window
-- **`rolling_aggregate`** - Aggregate field values (sum, avg, count, min, max) in time window
+- **`rolling_aggregate`** - Aggregate field values (sum, avg, min, max) in time window
 
 ## ⏱️ Time Windows
 
 Supported formats: `15m`, `1h`, `2h`, `24h`, `7d`, etc.
+
+---
+
+## 📚 Documentation
+
+- **[API.md](./API.md)** - Complete API documentation with all endpoints, request/response formats, and examples
+- **README.md** - Project overview and quick start guide (you are here!)
 
 ---
 
