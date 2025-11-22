@@ -8,7 +8,7 @@ type SubscriptionTemplate = {
   config: MetaEventConfig;
 };
 
-const WEBHOOK_URL = 'https://webhook.site/unique-url-here'; // Replace with your webhook.site URL
+const WEBHOOK_URL = 'http://localhost:3000/api/demo-callback';
 
 const subscriptionTemplates: SubscriptionTemplate[] = [
   // 1. Monitor high withdrawal volume from a specific ERC4626 vault

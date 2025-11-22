@@ -95,6 +95,7 @@ async function main() {
   const source = evmPortalSource(sourceConfig);
 
   const target = createTarget({
+    logLevel: 'error', // Suppress verbose SQD logs
     write: async ({ logger, read }) => {
       for await (const { data } of read()) {
         const eventsToInsert: Array<{

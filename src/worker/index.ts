@@ -39,6 +39,8 @@ class MetaEventWorker {
         payload: WebhookPayload;
       }> = [];
 
+      let checkedCount = 0;
+
       for (const subscription of subscriptions) {
         try {
           const lastNotification = await notificationsRepository.getLastNotificationTime(
@@ -54,6 +56,14 @@ class MetaEventWorker {
           }
 
           const result = await this.detector.detect(subscription);
+          checkedCount++;
+
+          // Log subscription check status
+          const chain = subscription.meta_event_config.chain ?? 'ethereum';
+          const contractRaw = subscription.meta_event_config.contract_address ??
+                              subscription.meta_event_config.contracts?.[0] ??
+                              'any';
+          const contract = contractRaw === 'any' ? 'any' : contractRaw.substring(0, 10);
 
           if (result.triggered) {
             console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -92,6 +102,17 @@ class MetaEventWorker {
               webhookUrl: subscription.webhook_url,
               payload,
             });
+          } else {
+            // Show why it didn't trigger
+            const actualValue = result.aggregatedValue ?? result.eventCount ?? 0;
+            const operator = subscription.meta_event_config.condition.operator;
+            const threshold = result.threshold ?? subscription.meta_event_config.condition.value;
+
+            console.log(
+              `[${timestamp()}] CHECK: "${subscription.name}" | ` +
+              `chain=${chain} contract=${contract} ` +
+              `actual=${actualValue} ${operator} threshold=${threshold} = false`
+            );
           }
         } catch (error) {
           console.error(`❌ Error processing subscription ${subscription.id}:`, error);
@@ -100,6 +121,14 @@ class MetaEventWorker {
 
       if (notifications.length > 0) {
         await this.dispatcher.dispatchBatch(notifications);
+      }
+
+      // Summary log
+      if (checkedCount > 0) {
+        const triggeredCount = notifications.length;
+        console.log(
+          `[${timestamp()}] SUMMARY: checked=${checkedCount} triggered=${triggeredCount} cooldown=${subscriptions.length - checkedCount}`
+        );
       }
     } catch (error) {
       console.error('❌ Worker error:', error);

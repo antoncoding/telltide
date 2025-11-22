@@ -741,20 +741,6 @@ for (const contract of contracts) {
 - Logs should focus on important events (triggers, errors)
 - User can check `notifications_log` table for history
 
-### 7. Why concise logs?
-
-**Decision:** Use single-line log format with timestamps
-
-**Rationale:**
-- Easy to scan for important events
-- Similar to industry standard (SQD indexer format)
-- Timestamp with milliseconds for debugging
-- Key metrics on one line: `block=X-Y events=N`
-
-**Format:**
-```
-[14:37:58.161] INFO: message | key=value key2=value2
-```
 
 ---
 
