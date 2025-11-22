@@ -27,11 +27,15 @@ class MetaEventWorker {
     this.isRunning = true;
 
     try {
+      console.log(`\n[${timestamp()}] 🔍 Checking subscriptions...`);
       const subscriptions = await subscriptionsRepository.getActiveSubscriptions();
 
       if (subscriptions.length === 0) {
-        return; // Silent when no subscriptions
+        console.log(`[${timestamp()}] ⚠️  No active subscriptions found`);
+        return;
       }
+
+      console.log(`[${timestamp()}] 📋 Found ${subscriptions.length} active subscription(s)`);
 
       const notifications: Array<{
         subscriptionId: string;
@@ -51,7 +55,12 @@ class MetaEventWorker {
             const cooldownMs = (subscription.cooldown_minutes ?? 1) * 60 * 1000;
             const timeSinceLastNotification = Date.now() - lastNotification.getTime();
             if (timeSinceLastNotification < cooldownMs) {
-              continue; // Silent cooldown
+              const remainingSeconds = Math.ceil((cooldownMs - timeSinceLastNotification) / 1000);
+              console.log(
+                `[${timestamp()}] ⏳ "${subscription.name}" | ` +
+                `cooldown=${remainingSeconds}s remaining`
+              );
+              continue;
             }
           }
 
@@ -108,10 +117,16 @@ class MetaEventWorker {
             const operator = subscription.meta_event_config.condition.operator;
             const threshold = result.threshold ?? subscription.meta_event_config.condition.value;
 
+            const eventType = subscription.meta_event_config.event_type;
+            const metaType = subscription.meta_event_config.type;
+            const window = subscription.meta_event_config.window;
+            const field = subscription.meta_event_config.field ?? 'count';
+
             console.log(
-              `[${timestamp()}] CHECK: "${subscription.name}" | ` +
-              `chain=${chain} contract=${contract} ` +
-              `actual=${actualValue} ${operator} threshold=${threshold} = false`
+              `[${timestamp()}] ✓ "${subscription.name}" | ` +
+              `type=${metaType} event=${eventType} window=${window} field=${field} | ` +
+              `chain=${chain} contract=${contract} | ` +
+              `actual=${actualValue} NOT ${operator} ${threshold}`
             );
           }
         } catch (error) {
@@ -124,12 +139,13 @@ class MetaEventWorker {
       }
 
       // Summary log
-      if (checkedCount > 0) {
-        const triggeredCount = notifications.length;
-        console.log(
-          `[${timestamp()}] SUMMARY: checked=${checkedCount} triggered=${triggeredCount} cooldown=${subscriptions.length - checkedCount}`
-        );
-      }
+      const triggeredCount = notifications.length;
+      const cooldownCount = subscriptions.length - checkedCount;
+
+      console.log(
+        `[${timestamp()}] 📊 SUMMARY: checked=${checkedCount}/${subscriptions.length} triggered=${triggeredCount} cooldown=${cooldownCount}`
+      );
+      console.log(`${'─'.repeat(80)}`);
     } catch (error) {
       console.error('❌ Worker error:', error);
     } finally {

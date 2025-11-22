@@ -1,535 +1,233 @@
 # TellTide API Interface Documentation
 
-**Base URL:** `http://localhost:3000`
+**Base URL:** `http://localhost:3001`
 
 ---
 
-## Quick Reference
+## 🔥 Quick Start - Copy & Paste These!
 
-### Endpoints
-- `GET /health` - Health check
-- `POST /api/subscriptions` - Create subscription
-- `GET /api/subscriptions` - List all subscriptions
-- `GET /api/subscriptions?user_id=alice` - List user's subscriptions
-- `GET /api/subscriptions/:id` - Get subscription details
-- `PATCH /api/subscriptions/:id` - Update subscription
-- `DELETE /api/subscriptions/:id` - Delete subscription
-- `GET /api/subscriptions/:id/notifications?limit=50` - Get notification history
+### 1. Morpho Net Withdrawal Alert (Base - USDC/cbBTC)
+```bash
+curl -X POST http://localhost:3001/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "name": "Morpho Net Withdrawal Alert",
+    "webhook_url": "https://webhook.site/YOUR-UNIQUE-URL",
+    "cooldown_minutes": 5,
+    "meta_event_config": {
+      "chain": "base",
+      "type": "net_aggregate",
+      "event_type": "morpho_supply",
+      "positive_event_type": "morpho_supply",
+      "negative_event_type": "morpho_withdraw",
+      "market_id": "0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836",
+      "window": "1h",
+      "aggregation": "sum",
+      "field": "assets",
+      "condition": {
+        "operator": "<",
+        "value": -1000000
+      }
+    }
+  }'
+```
+
+### 2. USDC Transfer Spike (Ethereum)
+```bash
+curl -X POST http://localhost:3001/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "name": "USDC Transfer Spike",
+    "webhook_url": "https://webhook.site/YOUR-UNIQUE-URL",
+    "cooldown_minutes": 5,
+    "meta_event_config": {
+      "chain": "ethereum",
+      "type": "event_count",
+      "event_type": "erc20_transfer",
+      "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "window": "5m",
+      "condition": {
+        "operator": ">",
+        "value": 10
+      }
+    }
+  }'
+```
+
+### 3. Morpho Supply Count (Base)
+```bash
+curl -X POST http://localhost:3001/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "name": "Supply Event Count",
+    "webhook_url": "https://webhook.site/YOUR-UNIQUE-URL",
+    "cooldown_minutes": 5,
+    "meta_event_config": {
+      "chain": "base",
+      "type": "event_count",
+      "event_type": "morpho_supply",
+      "market_id": "0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836",
+      "window": "15m",
+      "condition": {
+        "operator": ">",
+        "value": 2
+      }
+    }
+  }'
+```
+
+**Steps:**
+1. Get webhook URL from [webhook.site](https://webhook.site)
+2. Replace `YOUR-UNIQUE-URL` in examples above
+3. Run curl command
+4. Check response for subscription ID
+
+---
+
+## Verify It Worked
+
+```bash
+# List all subscriptions
+curl http://localhost:3001/api/subscriptions?user_id=demo-user
+
+# Check health
+curl http://localhost:3001/health
+
+# View notifications for a subscription
+curl http://localhost:3001/api/subscriptions/{SUBSCRIPTION_ID}/notifications
+```
 
 ---
 
 ## Event Types
 
-### Morpho Market Events
-```typescript
-"morpho_supply"      // Supply liquidity to Morpho market
-"morpho_withdraw"    // Withdraw liquidity from Morpho market
-"morpho_borrow"      // Borrow from Morpho market
-"morpho_repay"       // Repay loan to Morpho market
-```
+**Morpho Markets** (no `contract_address` needed - auto-injected!)
+- `morpho_supply` - Supply to market
+- `morpho_withdraw` - Withdraw from market
+- `morpho_borrow` - Borrow from market
+- `morpho_repay` - Repay loan
 
-**Morpho Contract Address (Both Chains):**
-```
-0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb
-```
+**ERC4626 Vaults**
+- `erc4626_deposit` - Vault deposits
+- `erc4626_withdraw` - Vault withdrawals
 
-**✨ IMPORTANT:** The system automatically uses the Morpho contract address for all Morpho events. **You do NOT need to specify `contract_address` when creating subscriptions for Morpho events** - it's automatically injected! Just specify the `event_type` (e.g., `morpho_supply`) and optionally filter by `market_id`.
-
-**Event Data Structure:**
-```json
-{
-  "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
-  "caller": "0x...",
-  "onBehalf": "0x...",
-  "receiver": "0x...",
-  "assets": "1000000000000",
-  "shares": "1000000000000"
-}
-```
-
-### ERC4626 Vault Events
-```typescript
-"erc4626_deposit"    // Deposit to vault
-"erc4626_withdraw"   // Withdraw from vault
-```
-
-### ERC20 Events
-```typescript
-"erc20_transfer"     // Token transfer
-```
+**ERC20**
+- `erc20_transfer` - Token transfers
 
 ---
 
 ## Meta-Event Types
 
-### 1. Event Count
-Count events in time window
-```typescript
+**1. event_count** - Count events
+```json
 {
-  type: "event_count"
+  "type": "event_count",
+  "event_type": "morpho_supply",
+  "window": "15m",
+  "condition": { "operator": ">", "value": 5 }
 }
 ```
 
-### 2. Rolling Aggregate
-Sum/avg/min/max field values
-```typescript
+**2. rolling_aggregate** - Sum/avg/min/max a field
+```json
 {
-  type: "rolling_aggregate"
-  aggregation: "sum" | "avg" | "min" | "max"
-  field: "assets" | "value" | "shares"
+  "type": "rolling_aggregate",
+  "event_type": "morpho_supply",
+  "aggregation": "sum",
+  "field": "assets",
+  "window": "1h",
+  "condition": { "operator": ">", "value": 1000000 }
 }
 ```
 
-### 3. Net Aggregate ⭐ NEW
-Calculate net flow (positive - negative)
-```typescript
+**3. net_aggregate** - Calculate net flow (positive - negative)
+```json
 {
-  type: "net_aggregate"
-  positive_event_type: EventType
-  negative_event_type: EventType
-  aggregation: "sum" | "avg" | "min" | "max"
-  field: "assets" | "value" | "shares"
+  "type": "net_aggregate",
+  "event_type": "morpho_supply",
+  "positive_event_type": "morpho_supply",
+  "negative_event_type": "morpho_withdraw",
+  "aggregation": "sum",
+  "field": "assets",
+  "window": "1h",
+  "condition": { "operator": "<", "value": -1000000 }
 }
 ```
-
-**Common Patterns:**
-- **Net Supply**: `morpho_supply - morpho_withdraw`
-- **Net Borrow**: `morpho_borrow - morpho_repay`
-- **Net Vault Flow**: `erc4626_deposit - erc4626_withdraw`
 
 ---
 
-## Create Subscription Request
-
-### TypeScript Interface
+## Config Options
 
 ```typescript
-interface CreateSubscriptionRequest {
+{
   user_id: string;
   name: string;
   webhook_url: string;
-  cooldown_minutes?: number;
-  meta_event_config: MetaEventConfig;
-}
+  cooldown_minutes?: number; // default: 1
+  meta_event_config: {
+    // Required
+    type: "event_count" | "rolling_aggregate" | "net_aggregate";
+    event_type: EventType;
+    window: string; // "15m", "1h", "2h", "24h"
+    condition: {
+      operator: ">" | "<" | ">=" | "<=" | "=" | "!=";
+      value: number;
+    };
 
-interface MetaEventConfig {
-  // Meta-event type
-  type: "event_count" | "rolling_aggregate" | "net_aggregate";
+    // Optional filters
+    chain?: "ethereum" | "base";
+    market_id?: string; // For Morpho (bytes32)
+    contract_address?: string; // Single address
+    contracts?: string[]; // Multiple addresses (OR logic)
+    from_address?: string;
+    to_address?: string;
+    lookback_blocks?: number; // Use blocks instead of time
 
-  // Event type
-  event_type:
-    | "erc20_transfer"
-    | "erc4626_deposit"
-    | "erc4626_withdraw"
-    | "morpho_supply"
-    | "morpho_withdraw"
-    | "morpho_borrow"
-    | "morpho_repay";
+    // For aggregates
+    aggregation?: "sum" | "avg" | "min" | "max";
+    field?: "assets" | "value" | "shares";
 
-  // Optional filters
-  chain?: "ethereum" | "base";
-  contracts?: string[];              // Array of addresses (OR logic)
-  contract_address?: string;         // Single address
-  market_id?: string;                // Morpho market ID (bytes32)
-  from_address?: string;
-  to_address?: string;
-
-  // Time window
-  window: string;                    // "15m", "1h", "2h", "24h", "7d"
-  lookback_blocks?: number;          // Use blocks instead of time
-
-  // Aggregation (for rolling_aggregate and net_aggregate)
-  aggregation?: "sum" | "avg" | "min" | "max" | "count";
-  field?: string;                    // "assets", "value", "shares"
-
-  // Net aggregate specific
-  positive_event_type?: EventType;   // e.g., "morpho_supply"
-  negative_event_type?: EventType;   // e.g., "morpho_withdraw"
-
-  // Condition
-  condition: {
-    operator: ">" | "<" | ">=" | "<=" | "=" | "!=";
-    value: number | string;
+    // For net_aggregate
+    positive_event_type?: EventType;
+    negative_event_type?: EventType;
   };
 }
 ```
 
 ---
 
-## Example: Morpho Net Supply Alert
-
-### Detect Net Withdrawals from Specific Market
-
-**Scenario:** Alert when net supply (supply - withdraw) drops below -1M USDC in 1 hour
+## Other Endpoints
 
 ```bash
-curl -X POST http://localhost:3000/api/subscriptions \
+# Update subscription
+curl -X PATCH http://localhost:3001/api/subscriptions/{ID} \
   -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "alice",
-    "name": "Morpho Market Net Withdrawal Alert",
-    "webhook_url": "https://webhook.site/your-unique-url",
-    "cooldown_minutes": 5,
-    "meta_event_config": {
-      "type": "net_aggregate",
-      "event_type": "morpho_supply",
-      "positive_event_type": "morpho_supply",
-      "negative_event_type": "morpho_withdraw",
-      "chain": "ethereum",
-      "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
-      "window": "1h",
-      "aggregation": "sum",
-      "field": "assets",
-      "condition": {
-        "operator": "<",
-        "value": -1000000000000
-      }
-    }
-  }'
-```
+  -d '{"is_active": false}'
 
-**Note:** No `contract_address` needed - automatically uses Morpho contract!
-
-**Response:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "user_id": "alice",
-  "name": "Morpho Market Net Withdrawal Alert",
-  "webhook_url": "https://webhook.site/your-unique-url",
-  "cooldown_minutes": 5,
-  "meta_event_config": {
-    "type": "net_aggregate",
-    "event_type": "morpho_supply",
-    "positive_event_type": "morpho_supply",
-    "negative_event_type": "morpho_withdraw",
-    "chain": "ethereum",
-    "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
-    "window": "1h",
-    "aggregation": "sum",
-    "field": "assets",
-    "condition": {
-      "operator": "<",
-      "value": -1000000000000
-    }
-  },
-  "is_active": true,
-  "created_at": "2025-11-22T10:30:00.000Z",
-  "updated_at": "2025-11-22T10:30:00.000Z"
-}
+# Delete subscription
+curl -X DELETE http://localhost:3001/api/subscriptions/{ID}
 ```
 
 ---
 
-## Example: Morpho Net Borrow Spike
+## Troubleshooting
 
-### Detect High Net Borrowing Activity
+**No subscriptions showing?**
+- Check: `curl http://localhost:3001/api/subscriptions?user_id=demo-user`
 
-**Scenario:** Alert when net borrows (borrow - repay) exceed 500K USDC in 30 minutes
+**Subscription not triggering?**
+- Lower threshold (e.g., `value: 1`)
+- Check worker logs for check results
+- Verify indexer is running and Base events are indexed
 
-```bash
-curl -X POST http://localhost:3000/api/subscriptions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "bob",
-    "name": "High Net Borrow Alert",
-    "webhook_url": "https://webhook.site/your-unique-url",
-    "cooldown_minutes": 10,
-    "meta_event_config": {
-      "type": "net_aggregate",
-      "event_type": "morpho_borrow",
-      "positive_event_type": "morpho_borrow",
-      "negative_event_type": "morpho_repay",
-      "chain": "ethereum",
-      "window": "30m",
-      "aggregation": "sum",
-      "field": "assets",
-      "condition": {
-        "operator": ">",
-        "value": 500000000000
-      }
-    }
-  }'
-```
-
-**Note:** No `contract_address` needed - monitors all Morpho markets!
+**Connection refused?**
+- Verify API is running: `pnpm api`
+- Check port in `.env` file
 
 ---
 
-## Example: ERC4626 Vault Net Withdrawals
-
-### Monitor Vault Outflows
-
-**Scenario:** Alert when net deposits (deposits - withdrawals) drop below -1M USDC in 2 hours
-
-```bash
-curl -X POST http://localhost:3000/api/subscriptions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "charlie",
-    "name": "Vault Net Withdrawal Alert",
-    "webhook_url": "https://webhook.site/your-unique-url",
-    "cooldown_minutes": 15,
-    "meta_event_config": {
-      "type": "net_aggregate",
-      "event_type": "erc4626_deposit",
-      "positive_event_type": "erc4626_deposit",
-      "negative_event_type": "erc4626_withdraw",
-      "chain": "ethereum",
-      "contract_address": "0xYourVaultAddress...",
-      "window": "2h",
-      "aggregation": "sum",
-      "field": "assets",
-      "condition": {
-        "operator": "<",
-        "value": -1000000000000
-      }
-    }
-  }'
-```
-
----
-
-## Example: Simple Supply Count
-
-### Count Supply Events to Market
-
-**Scenario:** Alert when more than 20 supply events occur in 15 minutes
-
-```bash
-curl -X POST http://localhost:3000/api/subscriptions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "david",
-    "name": "High Supply Activity",
-    "webhook_url": "https://webhook.site/your-unique-url",
-    "cooldown_minutes": 5,
-    "meta_event_config": {
-      "type": "event_count",
-      "event_type": "morpho_supply",
-      "chain": "ethereum",
-      "market_id": "0x58e212060645d18eab6d9b2af3d56fbc906a92ff5667385f616f662c70372284",
-      "window": "15m",
-      "condition": {
-        "operator": ">",
-        "value": 20
-      }
-    }
-  }'
-```
-
-**Note:** No `contract_address` needed!
-
----
-
-## Example: Total Supply Aggregation
-
-### Sum Total Supply to Market
-
-**Scenario:** Alert when total supply exceeds 100K USDC in 1 hour
-
-```bash
-curl -X POST http://localhost:3000/api/subscriptions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "eve",
-    "name": "Large Supply Aggregate",
-    "webhook_url": "https://webhook.site/your-unique-url",
-    "cooldown_minutes": 30,
-    "meta_event_config": {
-      "type": "rolling_aggregate",
-      "event_type": "morpho_supply",
-      "chain": "ethereum",
-      "market_id": "0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836",
-      "window": "1h",
-      "aggregation": "sum",
-      "field": "assets",
-      "condition": {
-        "operator": ">",
-        "value": 100000000000
-      }
-    }
-  }'
-```
-
-**Note:** No `contract_address` needed!
-
----
-
-## Webhook Payload
-
-When a meta-event triggers, your webhook receives:
-
-```json
-{
-  "subscription_id": "550e8400-e29b-41d4-a716-446655440000",
-  "subscription_name": "Morpho Market Net Withdrawal Alert",
-  "triggered_at": "2025-11-22T10:30:00.000Z",
-  "meta_event": {
-    "type": "net_aggregate",
-    "condition_met": true,
-    "aggregated_value": -1500000000000,
-    "threshold": -1000000000000,
-    "window": "1h",
-    "triggered_by_contract": "0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb"
-  }
-}
-```
-
----
-
-## Update Subscription
-
-```bash
-curl -X PATCH http://localhost:3000/api/subscriptions/{id} \
-  -H "Content-Type: application/json" \
-  -d '{
-    "is_active": false
-  }'
-```
-
-**Updatable Fields:**
-```typescript
-{
-  name?: string;
-  webhook_url?: string;
-  meta_event_config?: MetaEventConfig;
-  cooldown_minutes?: number;
-  is_active?: boolean;
-}
-```
-
----
-
-## List Subscriptions
-
-```bash
-# List all active subscriptions
-curl http://localhost:3000/api/subscriptions
-
-# List user's subscriptions
-curl http://localhost:3000/api/subscriptions?user_id=alice
-```
-
----
-
-## Get Notification History
-
-```bash
-# Get last 50 notifications (default)
-curl http://localhost:3000/api/subscriptions/{id}/notifications
-
-# Get last 10 notifications
-curl http://localhost:3000/api/subscriptions/{id}/notifications?limit=10
-```
-
-**Response:**
-```json
-[
-  {
-    "id": "uuid",
-    "subscription_id": "uuid",
-    "triggered_at": "2025-11-22T10:30:00.000Z",
-    "payload": {
-      "subscription_id": "uuid",
-      "subscription_name": "Alert name",
-      "triggered_at": "2025-11-22T10:30:00.000Z",
-      "meta_event": {
-        "type": "net_aggregate",
-        "condition_met": true,
-        "aggregated_value": -1500000000000,
-        "threshold": -1000000000000,
-        "window": "1h"
-      }
-    },
-    "webhook_response_status": 200,
-    "retry_count": 0,
-    "created_at": "2025-11-22T10:30:00.000Z"
-  }
-]
-```
-
----
-
-## Delete Subscription
-
-```bash
-curl -X DELETE http://localhost:3000/api/subscriptions/{id}
-```
-
-**Response:** 204 No Content
-
----
-
-## Error Responses
-
-### 400 Bad Request
-```json
-{
-  "error": "Validation error",
-  "details": {
-    "issues": [
-      {
-        "path": ["meta_event_config", "market_id"],
-        "message": "Invalid market_id format"
-      }
-    ]
-  }
-}
-```
-
-### 404 Not Found
-```json
-{
-  "error": "Subscription not found"
-}
-```
-
-### 500 Internal Server Error
-```json
-{
-  "error": "Internal server error"
-}
-```
-
----
-
-## Important Notes
-
-### Morpho Events
-- **Contract Address:** `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` (same on Ethereum & Base)
-- **Market ID Format:** bytes32 hex string (66 chars: `0x` + 64 hex chars)
-- Always include `contract_address` when filtering Morpho events
-
-### Net Aggregate
-- Returns **positive - negative** value
-- Negative results mean net outflow (more withdrawals/repays)
-- Positive results mean net inflow (more supply/borrows)
-
-### Time Windows
-- Format: `{number}{unit}` where unit is `m` (minutes), `h` (hours), or `d` (days)
-- Examples: `15m`, `1h`, `2h`, `24h`, `7d`
-
-### Block-Based Lookback
-- More efficient for short windows on chains with consistent block times
-- Base: ~2s blocks → 450 blocks ≈ 15 minutes
-- Ethereum: ~12s blocks → 300 blocks ≈ 1 hour
-
-### Cooldown
-- Prevents notification spam
-- Default: 1 minute
-- Recommended: 5-15 minutes for production alerts
-
----
-
-## Testing with webhook.site
-
-1. Visit https://webhook.site
-2. Copy your unique URL
-3. Use it as `webhook_url` in your subscription
-4. Watch real-time webhook deliveries in the browser
-
----
-
-**Last Updated:** 2025-11-22
-**Version:** 1.0 (Morpho + Net Aggregate Support)
+**Market ID Used in Examples:**
+`0x9103c3b4e834476c9a62ea009ba2c884ee42e94e6e314a26f04d312434191836` (USDC/cbBTC on Base)
