@@ -246,9 +246,7 @@ When triggered, your webhook receives:
 
 ## 📡 API Reference
 
-**Full API Documentation:** See [API.md](./API.md) for complete endpoint documentation, request/response formats, and examples.
-
-**Quick Overview:**
+**Base URL:** `http://localhost:3000`
 
 ### Subscriptions
 - `POST /api/subscriptions` - Create a new meta-event subscription
@@ -260,6 +258,8 @@ When triggered, your webhook receives:
 
 ### Health
 - `GET /health` - Health check endpoint
+
+**Full API Documentation:** See [ARCHITECTURE.md](./ARCHITECTURE.md#4-rest-api-srcapi) for complete request/response formats and examples.
 
 ---
 
@@ -337,8 +337,8 @@ Supported formats: `15m`, `1h`, `2h`, `24h`, `7d`, etc.
 
 ## 📚 Documentation
 
-- **[API.md](./API.md)** - Complete API documentation with all endpoints, request/response formats, and examples
-- **README.md** - Project overview and quick start guide (you are here!)
+- **[README.md](./README.md)** - Quick start guide and overview (you are here!)
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Complete technical reference, API docs, and AI context
 
 ---
 

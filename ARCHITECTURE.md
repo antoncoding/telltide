@@ -278,56 +278,84 @@ if (lastNotification) {
 
 **Endpoints:**
 
-```
-POST   /api/subscriptions               - Create subscription
-GET    /api/subscriptions               - List subscriptions (?user_id=...)
-GET    /api/subscriptions/:id           - Get subscription
-PATCH  /api/subscriptions/:id           - Update subscription
-DELETE /api/subscriptions/:id           - Delete subscription
-GET    /api/subscriptions/:id/notifications - Get notification history (?limit=50)
-GET    /health                          - Health check
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/subscriptions` | Create subscription |
+| GET | `/api/subscriptions` | List subscriptions (?user_id=...) |
+| GET | `/api/subscriptions/:id` | Get subscription details |
+| PATCH | `/api/subscriptions/:id` | Update subscription |
+| DELETE | `/api/subscriptions/:id` | Delete subscription |
+| GET | `/api/subscriptions/:id/notifications` | Get notification history (?limit=50) |
+| GET | `/health` | Health check |
 
 **Validation:** Zod schemas in `src/api/validators.ts`
 
-**Example Request:**
+**Request Body (POST /api/subscriptions):**
 ```json
-POST /api/subscriptions
 {
-  "user_id": "alice",
-  "name": "Base Vault Monitor",
-  "webhook_url": "https://webhook.site/...",
-  "cooldown_minutes": 5,
+  "user_id": "string",
+  "name": "string",
+  "webhook_url": "https://...",
+  "cooldown_minutes": 5,  // optional, default: 1
   "meta_event_config": {
-    "chain": "base",
-    "type": "rolling_aggregate",
-    "event_type": "erc4626_withdraw",
-    "contract_address": "0xbeeF010f9cb27031ad51e3333f9aF9C6B1228183",
-    "window": "1h",
-    "lookback_blocks": 300,
-    "aggregation": "sum",
-    "field": "assets",
+    "chain": "ethereum" | "base",  // optional, default: ethereum
+    "type": "event_count" | "rolling_aggregate",
+    "event_type": "erc20_transfer" | "erc4626_deposit" | "erc4626_withdraw",
+    "contract_address": "0x...",  // optional
+    "contracts": ["0x...", "0x..."],  // optional, OR logic
+    "from_address": "0x...",  // optional
+    "to_address": "0x...",  // optional
+    "window": "1h" | "15m" | "24h" | ...,
+    "lookback_blocks": 300,  // optional, overrides time-based
+    "aggregation": "sum" | "avg" | "min" | "max",  // for rolling_aggregate
+    "field": "assets" | "value" | "shares",  // for rolling_aggregate
     "condition": {
-      "operator": ">",
+      "operator": ">" | "<" | ">=" | "<=" | "=" | "!=",
       "value": 1000000000
     }
   }
 }
 ```
 
-**Response:**
+**Response (all endpoints return full subscription object):**
 ```json
 {
   "id": "uuid",
-  "user_id": "alice",
-  "name": "Base Vault Monitor",
-  "webhook_url": "https://webhook.site/...",
+  "user_id": "string",
+  "name": "string",
+  "webhook_url": "https://...",
   "cooldown_minutes": 5,
   "meta_event_config": { ... },
   "is_active": true,
   "created_at": "2025-11-22T10:00:00Z",
   "updated_at": "2025-11-22T10:00:00Z"
 }
+```
+
+**cURL Examples:**
+
+```bash
+# Create subscription
+curl -X POST http://localhost:3000/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"alice","name":"Test","webhook_url":"https://webhook.site/...","meta_event_config":{...}}'
+
+# List all subscriptions
+curl http://localhost:3000/api/subscriptions
+
+# Get specific subscription
+curl http://localhost:3000/api/subscriptions/{id}
+
+# Update subscription
+curl -X PATCH http://localhost:3000/api/subscriptions/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"is_active":false}'
+
+# Delete subscription
+curl -X DELETE http://localhost:3000/api/subscriptions/{id}
+
+# Get notification history
+curl http://localhost:3000/api/subscriptions/{id}/notifications?limit=10
 ```
 
 ---
@@ -1051,10 +1079,8 @@ INDEXER_USE_CACHE=false
 
 | File | Purpose |
 |------|---------|
-| `README.md` | Quick start guide |
-| `API.md` | Complete API documentation |
-| `ARCHITECTURE.md` | This file - comprehensive reference |
-| `MIGRATION.md` | Chain migration guide |
+| `README.md` | Quick start guide for users |
+| `ARCHITECTURE.md` | This file - comprehensive technical reference & AI context |
 | `.env.example` | Environment variable template |
 
 ---
