@@ -33,7 +33,7 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
     name: 'Morpho Net Withdrawal Alert',
     description: 'Alert when net supply drops below -100K (more withdrawals than supply) in 1 hour',
     config: {
-      chain: 'ethereum',
+      chain: 'base',
       type: 'net_aggregate',
       event_type: 'morpho_supply',
       positive_event_type: 'morpho_supply',
@@ -45,7 +45,7 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
       field: 'assets',
       condition: {
         operator: '<',
-        value: -100000000000, // -100K (6 decimals)
+        value: -100000000, // -100K (6 decimals)
       },
     },
   },

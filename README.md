@@ -87,18 +87,22 @@ pnpm db:migrate
 
 **5. Start all services:**
 ```bash
-# Start everything (indexer + worker + api)
+# Start everything (unified multi-chain indexer + worker + api)
 pnpm dev
 
 # OR start individually in separate terminals:
-pnpm indexer  # Terminal 1
+pnpm indexer  # Terminal 1 - Indexes BOTH Ethereum + Base
 pnpm worker   # Terminal 2
 pnpm api      # Terminal 3
+
+# OR run individual chain indexers (if needed):
+pnpm indexer:ethereum  # Only Ethereum
+pnpm indexer:base      # Only Base
 ```
 
 **Services running:**
 - 📡 API: http://localhost:3000
-- 🔍 Indexer: Indexing ERC20 + ERC4626 events
+- 🔍 Indexer: Unified multi-chain indexer for Ethereum + Base (ERC20 + ERC4626 + Morpho events)
 - ⚙️ Worker: Checking subscriptions every 30s
 
 **6. (Optional) Insert example subscriptions:**
@@ -316,9 +320,14 @@ Key environment variables (see `.env.example`):
 | `ETHEREUM_RPC_URL` | Ethereum RPC endpoint for getting current block | `https://eth.llamarpc.com` |
 | `BASE_RPC_URL` | Base RPC endpoint for getting current block | `https://mainnet.base.org` |
 | `INDEXER_MAX_LOOKBACK_BLOCKS` | Max blocks back from chain head | `10000` |
-| `INDEXER_ENABLED_CHAINS` | Comma-separated list of chains to index | `ethereum,base` |
+| `INDEXER_CHAIN` | Run single chain only (optional: `ethereum` or `base`) | _not set (runs both)_ |
 
-**Note on indexing:** The indexer **dynamically** calculates the start block on every startup by fetching the current blockchain head via RPC and going back `MAX_LOOKBACK_BLOCKS`. This ensures you always have recent data without manual configuration. Duplicate events are automatically skipped.
+**Note on indexing:**
+- By default, `pnpm indexer` runs a **unified multi-chain indexer** that monitors both Ethereum and Base simultaneously in a single process
+- The indexer **dynamically** calculates the start block on every startup by fetching the current blockchain head via RPC and going back `MAX_LOOKBACK_BLOCKS`
+- All events are tagged with their chain (`ethereum` or `base`) and stored in the same database
+- You can optionally run individual chain indexers with `pnpm indexer:ethereum` or `pnpm indexer:base`
+- Duplicate events are automatically skipped
 
 ---
 

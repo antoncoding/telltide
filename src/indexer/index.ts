@@ -11,16 +11,8 @@ import type { EventType } from '../types/index.js';
 
 const timestamp = () => new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
 
-async function main() {
-  const connected = await testConnection();
-  if (!connected) {
-    console.error(`[${timestamp()}] ERROR: Failed to connect to database`);
-    process.exit(1);
-  }
-
-  // Use ethereum chain for indexing (Base support coming soon)
-  const chainName = 'ethereum';
-  const chainConfig = config.chains.ethereum;
+async function startChainIndexer(chainName: 'ethereum' | 'base') {
+  const chainConfig = config.chains[chainName];
 
   // Fetch current head block via RPC
   let headBlock = 0;
@@ -123,7 +115,7 @@ async function main() {
   };
 
   if (config.indexer.useCache) {
-    sourceConfig.cache = portalSqliteCache({ path: './portal-cache.sqlite' });
+    sourceConfig.cache = portalSqliteCache({ path: `./portal-cache-${chainName}.sqlite` });
   }
 
   const source = evmPortalSource(sourceConfig);
@@ -295,6 +287,38 @@ async function main() {
   });
 
   await source.pipeTo(target);
+}
+
+async function main() {
+  const connected = await testConnection();
+  if (!connected) {
+    console.error(`[${timestamp()}] ERROR: Failed to connect to database`);
+    process.exit(1);
+  }
+
+  // Get chain from CLI argument or environment variable
+  // If not specified, run both chains
+  const chainArg = process.argv[2] ?? process.env.INDEXER_CHAIN;
+
+  if (chainArg) {
+    // Run single chain
+    const chainName = chainArg.toLowerCase();
+
+    if (chainName !== 'ethereum' && chainName !== 'base') {
+      console.error(`[${timestamp()}] ERROR: Invalid chain "${chainArg}". Must be "ethereum" or "base"`);
+      process.exit(1);
+    }
+
+    console.log(`[${timestamp()}] INFO: Starting indexer for ${chainName}...`);
+    await startChainIndexer(chainName as 'ethereum' | 'base');
+  } else {
+    // Run both chains concurrently
+    console.log(`[${timestamp()}] INFO: Starting unified multi-chain indexer for ethereum + base...`);
+    await Promise.all([
+      startChainIndexer('ethereum'),
+      startChainIndexer('base'),
+    ]);
+  }
 }
 
 main().catch((error) => {

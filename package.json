@@ -5,10 +5,12 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "concurrently \"pnpm indexer\" \"pnpm worker\" \"pnpm api\"",
     "build": "tsc",
     "start": "node dist/index.js",
     "indexer": "tsx src/indexer/index.ts",
+    "indexer:ethereum": "tsx src/indexer/index.ts ethereum",
+    "indexer:base": "tsx src/indexer/index.ts base",
     "api": "tsx src/api/index.ts",
     "worker": "tsx src/worker/index.ts",
     "db:migrate": "tsx src/db/migrate.ts",
