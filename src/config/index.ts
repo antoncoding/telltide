@@ -13,6 +13,9 @@ export type Config = {
   worker: {
     intervalSeconds: number;
   };
+  rpc: {
+    url: string;
+  };
   sqd: {
     portalUrl: string;
   };
@@ -35,6 +38,9 @@ export const config: Config = {
   },
   worker: {
     intervalSeconds: parseInt(process.env.WORKER_INTERVAL_SECONDS ?? '30', 10),
+  },
+  rpc: {
+    url: process.env.RPC_URL ?? 'https://eth.llamarpc.com',
   },
   sqd: {
     portalUrl: process.env.SQD_PORTAL_URL ?? 'https://portal.sqd.dev/datasets/ethereum-mainnet',

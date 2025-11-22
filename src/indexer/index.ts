@@ -1,6 +1,7 @@
 import { createTarget } from '@subsquid/pipes';
 import { evmPortalSource, EvmQueryBuilder, commonAbis } from '@subsquid/pipes/evm';
 import { portalSqliteCache } from '@subsquid/pipes/portal-cache/node';
+import axios from 'axios';
 import { config } from '../config/index.js';
 import { eventsRepository } from '../db/repositories/events.js';
 import { testConnection } from '../db/client.js';
@@ -16,25 +17,28 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`💡 Fetching current blockchain head...`);
+  console.log(`💡 Fetching current blockchain head from RPC...`);
 
-  // Fetch current head block from Portal to calculate dynamic start
-  const tempSource = evmPortalSource({
-    portal: config.sqd.portalUrl,
-    query: new EvmQueryBuilder().addFields({ block: { number: true } }),
-  });
-
+  // Fetch current head block via RPC
   let headBlock = 0;
-  for await (const { data } of tempSource.read()) {
-    if (data.blocks.length > 0) {
-      headBlock = Math.max(...data.blocks.map((b) => b.header.number));
-      break; // Just get the latest block
-    }
-  }
+  try {
+    const response = await axios.post(config.rpc.url, {
+      jsonrpc: '2.0',
+      method: 'eth_blockNumber',
+      params: [],
+      id: 1,
+    });
 
-  if (headBlock === 0) {
-    console.error('❌ Failed to fetch current head block');
-    process.exit(1);
+    if (response.data?.result) {
+      headBlock = parseInt(response.data.result, 16); // Convert hex to decimal
+      console.log(`✅ Successfully fetched current block from RPC`);
+    } else {
+      throw new Error('Invalid RPC response');
+    }
+  } catch (error) {
+    console.error('❌ Failed to fetch current head block from RPC:', error);
+    console.log('💡 Falling back to default start block...');
+    headBlock = 21200000; // Fallback to a recent block if RPC fails
   }
 
   // Calculate dynamic start block

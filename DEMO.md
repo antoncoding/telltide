@@ -48,16 +48,18 @@ Edit `.env` if needed:
 # Default values work fine for demo
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/telltide
 API_PORT=3001
-INDEXER_MAX_LOOKBACK_BLOCKS=60000  # ~7 days of historical data
-WORKER_INTERVAL_SECONDS=30         # Check every 30s
+RPC_URL=https://eth.llamarpc.com     # Free RPC endpoint
+INDEXER_MAX_LOOKBACK_BLOCKS=60000    # ~7 days of historical data
+WORKER_INTERVAL_SECONDS=30           # Check every 30s
 ```
 
 **How indexing works:**
-- ✅ **Fully dynamic** - Fetches current blockchain head on startup
+- ✅ **Fully dynamic** - Fetches current blockchain head via RPC on startup
 - ✅ **Always recent** - Starts from (current head - MAX_LOOKBACK_BLOCKS)
 - ✅ **No manual config** - No need to update start blocks as chain progresses
 - ✅ **No cursor tracking** - Fresh index on each restart
 - ✅ **Duplicate safe** - Events skipped if already exist (ON CONFLICT DO NOTHING)
+- ✅ **Fast startup** - Simple RPC call to get current block (no Portal query needed)
 
 ### 3. Start All Services
 

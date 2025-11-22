@@ -261,10 +261,11 @@ Key environment variables (see `.env.example`):
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/telltide` |
 | `API_PORT` | API server port | `3000` |
 | `WORKER_INTERVAL_SECONDS` | How often to check subscriptions | `30` |
+| `RPC_URL` | Ethereum RPC endpoint for getting current block | `https://eth.llamarpc.com` |
 | `INDEXER_MAX_LOOKBACK_BLOCKS` | Max blocks back from chain head | `60000` (~7 days) |
 | `SQD_PORTAL_URL` | SQD Portal endpoint | `https://portal.sqd.dev/datasets/ethereum-mainnet` |
 
-**Note on indexing:** The indexer **dynamically** calculates the start block on every startup by fetching the current blockchain head and going back `MAX_LOOKBACK_BLOCKS`. This ensures you always have recent data without manual configuration. Duplicate events are automatically skipped.
+**Note on indexing:** The indexer **dynamically** calculates the start block on every startup by fetching the current blockchain head via RPC and going back `MAX_LOOKBACK_BLOCKS`. This ensures you always have recent data without manual configuration. Duplicate events are automatically skipped.
 
 ---
 
