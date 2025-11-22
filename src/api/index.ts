@@ -9,7 +9,7 @@ const app = express();
 // Middleware
 app.use(express.json());
 
-// CORS middleware (allow all origins for development)
+// CORS middleware
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
@@ -31,7 +31,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', service: 'TellTide', timestamp: new Date().toISOString() });
 });
 
 // API routes
@@ -50,16 +50,14 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 });
 
 async function main() {
-  console.log('🚀 Starting ChaosChain API Server...');
+  console.log('🌊 Starting TellTide API Server...');
 
-  // Test database connection
   const connected = await testConnection();
   if (!connected) {
     console.error('❌ Failed to connect to database. Exiting...');
     process.exit(1);
   }
 
-  // Start server
   app.listen(config.api.port, config.api.host, () => {
     console.log(`✅ API Server running on http://${config.api.host}:${config.api.port}`);
     console.log(`📡 Health check: http://${config.api.host}:${config.api.port}/health`);

@@ -5,7 +5,7 @@ import { dirname, join } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-console.log('🚀 Starting ChaosChain Server...\n');
+console.log('🌊 Starting TellTide Server...\n');
 
 const processes: Array<{ name: string; child: ReturnType<typeof spawn> }> = [];
 

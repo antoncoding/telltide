@@ -2,8 +2,8 @@
 
 set -e
 
-echo "🚀 ChaosChain Quick Start"
-echo "=========================="
+echo "🌊 TellTide Quick Start"
+echo "======================="
 echo ""
 
 # Check if Docker is running
@@ -23,7 +23,7 @@ echo "⏳ Waiting for PostgreSQL to be ready..."
 sleep 3
 
 # Check PostgreSQL health
-until docker exec chaoschain-postgres pg_isready -U postgres > /dev/null 2>&1; do
+until docker exec telltide-postgres pg_isready -U postgres > /dev/null 2>&1; do
   echo "   Still waiting..."
   sleep 2
 done

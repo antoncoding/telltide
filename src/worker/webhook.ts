@@ -31,7 +31,7 @@ export class WebhookDispatcher {
           timeout: 10000,
           headers: {
             'Content-Type': 'application/json',
-            'User-Agent': 'ChaosChain-Webhook/1.0',
+            'User-Agent': 'TellTide-Webhook/1.0',
           },
         });
 

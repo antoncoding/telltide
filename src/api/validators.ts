@@ -6,9 +6,7 @@ const comparisonOperatorSchema = z.enum(['>', '<', '>=', '<=', '=', '!=']);
 
 const aggregationTypeSchema = z.enum(['sum', 'avg', 'count', 'min', 'max']);
 
-const valueTypeSchema = z.enum(['absolute', 'percentage']);
-
-const baseConditionSchema = z.object({
+const metaEventConfigSchema = z.object({
   type: z.enum(['rolling_aggregate', 'event_count']),
   event_type: eventTypeSchema,
   contracts: z.array(z.string().regex(/^0x[a-fA-F0-9]{40}$/)).optional(),
@@ -21,17 +19,8 @@ const baseConditionSchema = z.object({
   condition: z.object({
     operator: comparisonOperatorSchema,
     value: z.union([z.number(), z.string()]),
-    value_type: valueTypeSchema.optional(),
   }),
 });
-
-const compoundConditionSchema = z.object({
-  type: z.literal('compound'),
-  operator: z.enum(['AND', 'OR']),
-  conditions: z.array(baseConditionSchema),
-});
-
-const metaEventConfigSchema = z.union([baseConditionSchema, compoundConditionSchema]);
 
 export const createSubscriptionSchema = z.object({
   user_id: z.string().min(1),

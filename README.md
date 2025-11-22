@@ -1,475 +1,315 @@
-# ChaosChain Server
+<div align="center">
 
-> Meta-event detection and webhook notification system for blockchain events
+# 🌊 TellTide
 
-ChaosChain allows developers to easily create "meta-events" (aggregated signals) from blockchain data and receive webhook notifications when conditions are met. Instead of manually tracking hundreds of individual events, subscribe to meaningful aggregated conditions like "notify me when withdrawals exceed 20% in the last hour" or "alert when there are more than 25 liquidations in 15 minutes."
+<p align="center">
+  <em style="color: #6c757d; font-style: italic;">Stay early. Stay safe in the dark forest.</em>
+</p>
 
-## Features
+**Detect aggregated blockchain events and get notified before it's too late.**
 
-- **Real-time Event Indexing**: Uses SQD Pipes SDK to index Morpho Blue and ERC20 events from Ethereum
-- **Meta-Event Detection**: Create complex conditions based on aggregated event data
-  - Rolling time windows (1h, 15m, 24h, etc.)
-  - Aggregations (sum, avg, count, min, max)
-  - Threshold comparisons (>, <, >=, <=, =, !=)
-- **Webhook Notifications**: Automatic webhook delivery with retry logic
-- **REST API**: Simple TypeScript API for managing subscriptions
-- **PostgreSQL Storage**: Efficient time-series event storage with indexing
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![SQD](https://img.shields.io/badge/Powered_by-SQD-purple)](https://sqd.dev)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+
+</div>
+
+---
+
+## What is TellTide?
+
+TellTide monitors ERC20 transfers and ERC4626 vault events (deposits/withdrawals) and alerts you when **aggregated conditions** are met. Instead of tracking individual transactions, subscribe to meaningful signals like:
+
+- 🚨 "Alert when total withdrawals from any of these 3 vaults exceed 1M USDC in 2 hours"
+- 📊 "Notify when more than 50 USDC transfers occur in 15 minutes"
+- 🔔 "Trigger when average deposit size falls below 10K USDC in 1 hour"
+
+Perfect for monitoring DeFi protocols, tracking whale movements, and detecting unusual on-chain activity.
+
+## Key Features
+
+- ⚡ **Real-time Indexing** - Uses SQD Pipes SDK to index ERC20 and ERC4626 events from Ethereum
+- 🎯 **Meta-Event Detection** - Create conditions on rolling time windows with aggregations (sum, avg, count, etc.)
+- 🔗 **Webhook Notifications** - Automatic HTTP POST to your endpoint with retry logic
+- 🗃️ **PostgreSQL Storage** - Efficient event storage with time-based queries
+- 🔧 **Simple REST API** - Easy subscription management
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     BLOCKCHAIN (Ethereum)                    │
-│              (Morpho Markets + ERC20 Transfers)             │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       │ SQD Portal API
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   SQD Pipes Indexer                         │
-│                   (src/indexer/index.ts)                    │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       │ Writes events
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     PostgreSQL Database                      │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       │ Reads for detection
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Meta-Event Detection Worker                    │
-│                   (src/worker/index.ts)                     │
-│  - Polls DB every 30s                                       │
-│  - Evaluates conditions                                     │
-│  - Triggers webhooks                                        │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       │ HTTP POST
-                       ▼
-                  User's Webhook URL
+Ethereum Blockchain (ERC20 + ERC4626)
+         ↓
+    SQD Portal API (fast historical data)
+         ↓
+  TellTide Indexer (stores last 7 days)
+         ↓
+    PostgreSQL Database
+         ↓
+  Detection Worker (checks every 30s)
+         ↓
+   Your Webhook URL 🎯
 ```
 
-## Quick Start
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - Node.js 18+
 - Docker & Docker Compose
-- pnpm (or npm/yarn)
+- pnpm
 
-### 1. Install Dependencies
+### Installation
 
+**1. Clone and install:**
 ```bash
 pnpm install
 ```
 
-### 2. Start PostgreSQL
-
+**2. Start PostgreSQL:**
 ```bash
 docker compose up -d
 ```
 
-### 3. Setup Environment
-
+**3. Setup environment:**
 ```bash
 cp .env.example .env
+# Edit .env if needed (defaults work for local dev)
 ```
 
-Edit `.env` as needed. Default values work for local development.
-
-### 4. Run Database Migrations
-
+**4. Run database migrations:**
 ```bash
 pnpm db:migrate
 ```
 
-### 5. Start All Services
-
-Start everything at once:
-
+**5. Start all services:**
 ```bash
+# Start everything (indexer + worker + api)
 pnpm dev
+
+# OR start individually in separate terminals:
+pnpm indexer  # Terminal 1
+pnpm worker   # Terminal 2
+pnpm api      # Terminal 3
 ```
 
-Or start services individually:
+**Services running:**
+- 📡 API: http://localhost:3000
+- 🔍 Indexer: Indexing ERC20 + ERC4626 events
+- ⚙️ Worker: Checking subscriptions every 30s
 
-```bash
-# Terminal 1 - Indexer
-pnpm indexer
+---
 
-# Terminal 2 - Worker
-pnpm worker
+## 📖 Usage
 
-# Terminal 3 - API
-pnpm api
-```
-
-The system will start:
-- **Indexer**: Indexes Morpho Blue events from Ethereum mainnet
-- **Worker**: Checks subscriptions every 30 seconds
-- **API**: REST API on http://localhost:3000
-
-## Usage Guide
-
-### Creating a Subscription
-
-Use the REST API to create a subscription:
+### Create a Subscription
 
 ```bash
 curl -X POST http://localhost:3000/api/subscriptions \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "alice",
-    "name": "High Withdrawal Alert",
-    "webhook_url": "https://your-server.com/webhook",
+    "name": "High Vault Withdrawal Alert",
+    "webhook_url": "https://webhook.site/your-unique-url",
     "meta_event_config": {
-      "type": "event_count",
-      "event_type": "morpho_withdraw",
-      "window": "1h",
+      "type": "rolling_aggregate",
+      "event_type": "erc4626_withdraw",
+      "contracts": [
+        "0xVaultA...",
+        "0xVaultB...",
+        "0xVaultC..."
+      ],
+      "window": "2h",
+      "aggregation": "sum",
+      "field": "assets",
       "condition": {
         "operator": ">",
-        "value": 25
+        "value": 1000000000000
       }
     }
   }'
 ```
 
-### Meta-Event Configuration Examples
+**This triggers when**: Any of the 3 vaults has total withdrawals exceeding 1M USDC (assuming 6 decimals) in the last 2 hours.
 
-#### 1. Event Count - Alert on withdrawal spike
+### Example Use Cases
 
+**1. Monitor ERC20 Transfer Spike**
 ```json
 {
   "type": "event_count",
-  "event_type": "morpho_withdraw",
-  "market_id": "0x...",
-  "window": "1h",
+  "event_type": "erc20_transfer",
+  "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "window": "15m",
   "condition": {
     "operator": ">",
-    "value": 25
+    "value": 50
   }
 }
 ```
+Triggers when USDC has more than 50 transfers in 15 minutes.
 
-**Triggers when**: More than 25 withdrawals occur in the last hour for a specific market.
-
-#### 2. Rolling Aggregate - Monitor total withdrawal volume
-
+**2. Track Deposits to Specific Vault**
 ```json
 {
   "type": "rolling_aggregate",
-  "event_type": "morpho_withdraw",
-  "market_id": "0x...",
+  "event_type": "erc4626_deposit",
+  "contract_address": "0xYourVault...",
   "window": "1h",
   "aggregation": "sum",
   "field": "assets",
   "condition": {
     "operator": ">",
-    "value": 1000000000000000000
+    "value": 10000000000
   }
 }
 ```
+Triggers when total deposits exceed 10K USDC (6 decimals) in 1 hour.
 
-**Triggers when**: Total withdrawn assets exceed 1 ETH (in wei) in the last hour.
-
-#### 3. Liquidation Spike Alert
-
+**3. Monitor Withdrawals from ANY of Multiple Vaults**
 ```json
 {
-  "type": "event_count",
-  "event_type": "morpho_liquidation",
-  "window": "15m",
+  "type": "rolling_aggregate",
+  "event_type": "erc4626_withdraw",
+  "contracts": ["0xVault1...", "0xVault2...", "0xVault3..."],
+  "window": "2h",
+  "aggregation": "sum",
+  "field": "assets",
   "condition": {
-    "operator": ">=",
-    "value": 3
+    "operator": ">",
+    "value": 1000000000000
   }
 }
 ```
-
-**Triggers when**: 3 or more liquidations happen within 15 minutes.
+Triggers when ANY of the 3 vaults exceeds 1M USDC withdrawn in 2 hours.
 
 ### Webhook Payload
 
-When a meta-event is triggered, your webhook receives:
+When triggered, your webhook receives:
 
 ```json
 {
   "subscription_id": "uuid",
-  "subscription_name": "High Withdrawal Alert",
+  "subscription_name": "High Vault Withdrawal Alert",
   "triggered_at": "2025-11-22T10:30:00.000Z",
   "meta_event": {
-    "type": "event_count",
+    "type": "rolling_aggregate",
     "condition_met": true,
-    "event_count": 28,
-    "threshold": 25,
-    "window": "1h"
+    "aggregated_value": 1500000000000,
+    "threshold": 1000000000000,
+    "window": "2h",
+    "triggered_by_contract": "0xVaultB..."
   },
   "events": [
     {
       "block_number": 20500000,
       "timestamp": "2025-11-22T09:45:00.000Z",
-      "event_type": "morpho_withdraw",
+      "event_type": "erc4626_withdraw",
+      "contract_address": "0xVaultB...",
       "data": {
-        "onBehalf": "0x...",
+        "sender": "0x...",
         "receiver": "0x...",
-        "assets": "1000000000000000000",
-        "shares": "1000000000000000000"
+        "owner": "0x...",
+        "assets": "500000000000",
+        "shares": "500000000000"
       }
     }
-    // ... more events
+    // ... up to 50 recent events
   ]
 }
 ```
 
-## API Reference
+---
+
+## 🔌 API Reference
 
 ### Subscriptions
 
-#### Create Subscription
-
-```
-POST /api/subscriptions
-```
-
-**Request Body:**
-```json
-{
-  "user_id": "string",
-  "name": "string",
-  "webhook_url": "string (url)",
-  "meta_event_config": { ... }
-}
-```
-
-**Response:** `201 Created`
-
-#### List Subscriptions
-
-```
-GET /api/subscriptions?user_id={optional}
-```
-
-**Response:** `200 OK`
-
-#### Get Subscription
-
-```
-GET /api/subscriptions/:id
-```
-
-**Response:** `200 OK`
-
-#### Update Subscription
-
-```
-PATCH /api/subscriptions/:id
-```
-
-**Request Body:**
-```json
-{
-  "name": "string (optional)",
-  "webhook_url": "string (optional)",
-  "meta_event_config": { ... } (optional),
-  "is_active": boolean (optional)
-}
-```
-
-**Response:** `200 OK`
-
-#### Delete Subscription
-
-```
-DELETE /api/subscriptions/:id
-```
-
-**Response:** `204 No Content`
-
-#### Get Notification History
-
-```
-GET /api/subscriptions/:id/notifications?limit={50}
-```
-
-**Response:** `200 OK`
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/subscriptions` | Create a new subscription |
+| `GET` | `/api/subscriptions` | List all subscriptions (filter by `?user_id=`) |
+| `GET` | `/api/subscriptions/:id` | Get subscription details |
+| `PATCH` | `/api/subscriptions/:id` | Update subscription |
+| `DELETE` | `/api/subscriptions/:id` | Delete subscription |
+| `GET` | `/api/subscriptions/:id/notifications` | Get notification history |
 
 ### Events
 
-#### Query Events
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/events` | Query recent events (filter by type, contract, block range) |
+| `GET` | `/api/events/stats` | Get event statistics |
 
-```
-GET /api/events?event_type={type}&market_id={id}&limit={100}
-```
+### Health Check
 
-**Query Parameters:**
-- `event_type`: Filter by event type
-- `market_id`: Filter by Morpho market ID
-- `contract_address`: Filter by contract address
-- `from_block`: Minimum block number
-- `to_block`: Maximum block number
-- `limit`: Max results (default: 100, max: 1000)
-
-**Response:** `200 OK`
-
-#### Get Event Statistics
-
-```
-GET /api/events/stats
+```bash
+curl http://localhost:3000/health
 ```
 
-**Response:** `200 OK` with aggregated statistics per event type.
+---
 
-## Configuration
+## ⚙️ Configuration
 
-### Environment Variables
-
-See `.env.example` for all configuration options:
+Key environment variables (see `.env.example`):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/chaoschain` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/telltide` |
 | `API_PORT` | API server port | `3000` |
-| `WORKER_INTERVAL_SECONDS` | Meta-event check interval | `30` |
-| `SQD_PORTAL_URL` | SQD Portal endpoint | `https://portal.sqd.dev/datasets/ethereum-mainnet` |
+| `WORKER_INTERVAL_SECONDS` | How often to check subscriptions | `30` |
 | `INDEXER_START_BLOCK` | Starting block for indexer | `20000000` |
-| `INDEXER_USE_CACHE` | Enable local Portal caching | `true` |
-| `MORPHO_BLUE_ADDRESS` | Morpho Blue contract address | `0xBBBBBbbBBb9cC5e90e3b3Af64bdAF62C37EEFFCb` |
+| `SQD_PORTAL_URL` | SQD Portal endpoint | `https://portal.sqd.dev/datasets/ethereum-mainnet` |
 
-## Event Types
+---
 
-The system indexes these event types:
+## 🛠️ Development
 
-- `morpho_supply`: Supply events from Morpho Blue
-- `morpho_borrow`: Borrow events from Morpho Blue
-- `morpho_withdraw`: Withdraw events from Morpho Blue
-- `morpho_repay`: Repay events from Morpho Blue
-- `morpho_liquidation`: Liquidation events from Morpho Blue
-- `erc20_transfer`: ERC20 transfer events (not implemented yet, but supported in schema)
-
-## Project Structure
-
-```
-server/
-├── src/
-│   ├── abi/                  # Contract ABIs
-│   │   └── morpho-blue.ts   # Morpho Blue event signatures
-│   ├── api/                  # REST API
-│   │   ├── routes/          # API route handlers
-│   │   ├── validators.ts    # Zod schemas
-│   │   └── index.ts         # Express app
-│   ├── config/              # Configuration
-│   │   └── index.ts
-│   ├── db/                  # Database layer
-│   │   ├── repositories/    # Data access layer
-│   │   ├── client.ts        # PostgreSQL client
-│   │   ├── migrate.ts       # Migration runner
-│   │   └── schema.sql       # Database schema
-│   ├── indexer/             # SQD Pipes indexer
-│   │   └── index.ts
-│   ├── worker/              # Meta-event detection worker
-│   │   ├── detector.ts      # Detection logic
-│   │   ├── webhook.ts       # Webhook dispatcher
-│   │   └── index.ts         # Worker main
-│   ├── types/               # TypeScript types
-│   │   └── index.ts
-│   └── index.ts             # Main entry (starts all services)
-├── docker-compose.yml       # PostgreSQL container
-├── package.json
-└── tsconfig.json
-```
-
-## Development
-
-### Database Management
-
-**Reset database:**
+### Reset Database
 ```bash
-docker compose down -v  # Delete data
-docker compose up -d    # Restart
-pnpm db:migrate         # Re-run migrations
+docker compose down -v
+docker compose up -d
+pnpm db:migrate
 ```
 
-**View logs:**
+### Connect to PostgreSQL
 ```bash
-docker compose logs -f postgres
+docker exec -it telltide-postgres psql -U postgres -d telltide
 ```
 
-**Connect to PostgreSQL:**
-```bash
-docker exec -it chaoschain-postgres psql -U postgres -d chaoschain
-```
+### Test Webhooks
+Use [webhook.site](https://webhook.site) to get a test webhook URL.
 
-### Testing Webhooks Locally
+---
 
-Use a service like [webhook.site](https://webhook.site) or [ngrok](https://ngrok.com) to test webhooks:
+## 📋 Supported Event Types
 
-1. Get a webhook URL from webhook.site
-2. Create a subscription with that URL
-3. Wait for meta-event to trigger
-4. View webhook payload in webhook.site
+- `erc20_transfer` - ERC20 Transfer events (from, to, value)
+- `erc4626_deposit` - ERC4626 vault deposits (sender, owner, assets, shares)
+- `erc4626_withdraw` - ERC4626 vault withdrawals (sender, receiver, owner, assets, shares)
 
-## Production Deployment
+## 🎯 Meta-Event Types
 
-1. Use a managed PostgreSQL instance
-2. Set `INDEXER_USE_CACHE=false` in production
-3. Configure proper `INDEXER_START_BLOCK` to avoid reindexing
-4. Add authentication to the API
-5. Use a process manager like PM2 or run in containers
-6. Set up monitoring and alerting
-7. Configure webhook retry policies based on your needs
+- **`event_count`** - Count events in time window
+- **`rolling_aggregate`** - Aggregate field values (sum, avg, count, min, max) in time window
 
-## Extending the System
+## ⏱️ Time Windows
 
-### Adding New Event Types
+Supported formats: `15m`, `1h`, `2h`, `24h`, `7d`, etc.
 
-1. Add event signature to `src/abi/` directory
-2. Update event decoder in `src/indexer/index.ts`
-3. Add event type to `src/types/index.ts`
-4. Update validators in `src/api/validators.ts`
+---
 
-### Adding New Meta-Event Types
+## 🤝 Contributing
 
-1. Add type to `MetaEventConditionType` in `src/types/index.ts`
-2. Implement detection logic in `src/worker/detector.ts`
-3. Update validators
+This is a hackathon project. Contributions welcome!
 
-## Troubleshooting
-
-**Indexer not progressing:**
-- Check Portal URL is accessible
-- Verify start block is valid
-- Check database connection
-
-**Webhooks not firing:**
-- Verify webhook URL is accessible
-- Check worker logs for errors
-- Ensure subscription is active
-- Verify meta-event condition is correct
-
-**Database connection errors:**
-- Ensure PostgreSQL is running: `docker compose ps`
-- Check `DATABASE_URL` in `.env`
-- Run migrations: `pnpm db:migrate`
-
-## License
+## 📄 License
 
 ISC
 
-## Contributing
+---
 
-This is a hackathon project prototype. Contributions welcome!
-
-## TODO / Future Improvements
-
-- [ ] Add authentication/API keys
-- [ ] Support ERC20 transfer indexing
-- [ ] Add more aggregation types (percentile, stddev, etc.)
-- [ ] Web dashboard for managing subscriptions
-- [ ] Support multiple blockchains
-- [ ] Add historical backtesting for meta-events
-- [ ] Implement rate limiting
-- [ ] Add webhook signature verification
-- [ ] Support multiple Morpho markets
-- [ ] Add factory pattern for discovering new markets
+<div align="center">
+  <sub>Built with SQD Pipes SDK | Powered by PostgreSQL | Made for the dark forest 🌲</sub>
+</div>

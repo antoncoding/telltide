@@ -9,7 +9,7 @@ import { events as erc4626Abi } from '../abi/erc4626.js';
 import type { EventType } from '../types/index.js';
 
 async function main() {
-  console.log('🚀 Starting Event Indexer...');
+  console.log('🌊 Starting TellTide Event Indexer...');
 
   const connected = await testConnection();
   if (!connected) {
@@ -34,7 +34,7 @@ async function main() {
         logIndex: true,
       },
     })
-    // ERC20 Transfer events (topic0 = Transfer signature)
+    // ERC20 Transfer events
     .addLog({
       request: {
         topic0: [commonAbis.erc20.events.Transfer.topic],
