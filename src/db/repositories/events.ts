@@ -124,10 +124,27 @@ export const eventsRepository = {
     contracts?: string[],
     contractAddress?: string,
     fromAddress?: string,
-    toAddress?: string
+    toAddress?: string,
+    lookbackBlocks?: number
   ): Promise<number> {
-    let whereClause = 'event_type = $1 AND timestamp >= NOW() - INTERVAL \'1 minute\' * $2';
-    const params: unknown[] = [eventType, windowMinutes];
+    let whereClause: string;
+    const params: unknown[] = [eventType];
+
+    // Use block-based lookback if specified, otherwise use time-based
+    if (lookbackBlocks !== undefined) {
+      // Get current max block number
+      const maxBlockResult = await query<{ max_block: number | null }>(
+        'SELECT MAX(block_number) as max_block FROM events'
+      );
+      const maxBlock = maxBlockResult.rows[0].max_block ?? 0;
+      const minBlock = Math.max(0, maxBlock - lookbackBlocks);
+
+      whereClause = 'event_type = $1 AND block_number >= $2';
+      params.push(minBlock);
+    } else {
+      whereClause = 'event_type = $1 AND timestamp >= NOW() - INTERVAL \'1 minute\' * $2';
+      params.push(windowMinutes);
+    }
 
     if (contracts && contracts.length > 0) {
       whereClause += ` AND contract_address = ANY($${params.length + 1})`;
@@ -163,10 +180,27 @@ export const eventsRepository = {
     contracts?: string[],
     contractAddress?: string,
     fromAddress?: string,
-    toAddress?: string
+    toAddress?: string,
+    lookbackBlocks?: number
   ): Promise<number> {
-    let whereClause = 'event_type = $1 AND timestamp >= NOW() - INTERVAL \'1 minute\' * $2';
-    const params: unknown[] = [eventType, windowMinutes];
+    let whereClause: string;
+    const params: unknown[] = [eventType];
+
+    // Use block-based lookback if specified, otherwise use time-based
+    if (lookbackBlocks !== undefined) {
+      // Get current max block number
+      const maxBlockResult = await query<{ max_block: number | null }>(
+        'SELECT MAX(block_number) as max_block FROM events'
+      );
+      const maxBlock = maxBlockResult.rows[0].max_block ?? 0;
+      const minBlock = Math.max(0, maxBlock - lookbackBlocks);
+
+      whereClause = 'event_type = $1 AND block_number >= $2';
+      params.push(minBlock);
+    } else {
+      whereClause = 'event_type = $1 AND timestamp >= NOW() - INTERVAL \'1 minute\' * $2';
+      params.push(windowMinutes);
+    }
 
     if (contracts && contracts.length > 0) {
       whereClause += ` AND contract_address = ANY($${params.length + 1})`;

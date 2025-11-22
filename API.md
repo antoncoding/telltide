@@ -47,6 +47,7 @@ Create a new meta-event subscription.
     "from_address": "string (optional, filter transfers FROM address)",
     "to_address": "string (optional, filter transfers TO address)",
     "window": "string (e.g., '1h', '15m', '24h')",
+    "lookback_blocks": number (optional, how many blocks back to look - overrides time-based window),
     "aggregation": "sum" | "avg" | "min" | "max" (required for rolling_aggregate),
     "field": "string (required for rolling_aggregate, e.g., 'assets', 'value')",
     "condition": {
@@ -434,6 +435,33 @@ Monitor ANY of multiple contracts (OR logic):
 ```
 
 **Triggers when:** ANY of the 3 vaults exceeds 500K USDC withdrawn in 1 hour.
+
+### Block-Based Lookback
+
+Use `lookback_blocks` instead of time-based window for more efficient queries:
+
+```json
+{
+  "type": "event_count",
+  "event_type": "erc20_transfer",
+  "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "window": "1m",
+  "lookback_blocks": 100,
+  "condition": {
+    "operator": ">",
+    "value": 5
+  }
+}
+```
+
+**Triggers when:** More than 5 USDC transfers occur in the last 100 blocks.
+
+**When to use:**
+- Small time windows that only need recent data (e.g., "1m" window)
+- Testing scenarios where you want to limit the data scanned
+- More predictable query performance (not dependent on block time variance)
+
+**Note:** When `lookback_blocks` is specified, queries use block numbers instead of timestamps. The system finds the current max block and looks back the specified number of blocks.
 
 ### Address Filtering
 

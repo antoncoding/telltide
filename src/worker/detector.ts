@@ -91,7 +91,8 @@ export class MetaEventDetector {
           undefined,
           contract,
           config.from_address,
-          config.to_address
+          config.to_address,
+          config.lookback_blocks
         );
 
         console.log(`Counting evnet for contract ${contract.slice(0, 8)} --- ${count}`)
@@ -124,7 +125,8 @@ export class MetaEventDetector {
       contracts,
       config.contract_address,
       config.from_address,
-      config.to_address
+      config.to_address,
+      config.lookback_blocks
     );
 
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
@@ -165,7 +167,8 @@ export class MetaEventDetector {
           undefined,
           contract,
           config.from_address,
-          config.to_address
+          config.to_address,
+          config.lookback_blocks
         );
 
         const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
@@ -197,7 +200,8 @@ export class MetaEventDetector {
       contracts,
       config.contract_address,
       config.from_address,
-      config.to_address
+      config.to_address,
+      config.lookback_blocks
     );
 
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;

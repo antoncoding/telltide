@@ -31,6 +31,7 @@ export type MetaEventConfig = {
   from_address?: string; // For ERC20 transfers from specific address
   to_address?: string; // For ERC20 transfers to specific address
   window: string; // e.g., "1h", "15m", "24h"
+  lookback_blocks?: number; // Optional: How many blocks back to look (overrides time-based lookback)
   aggregation?: AggregationType;
   field?: string;
   condition: {

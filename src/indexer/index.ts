@@ -16,12 +16,32 @@ async function main() {
     process.exit(1);
   }
 
-  // Always start from configured block (no cursor tracking)
-  // This ensures we always have recent data on restart
-  const startBlock = config.indexer.startBlock;
+  console.log(`💡 Fetching current blockchain head...`);
 
-  console.log(`📍 Starting from block: ${startBlock}`);
-  console.log(`💡 Always indexing from this block on restart (no cursor tracking)`);
+  // Fetch current head block from Portal to calculate dynamic start
+  const tempSource = evmPortalSource({
+    portal: config.sqd.portalUrl,
+    query: new EvmQueryBuilder().addFields({ block: { number: true } }),
+  });
+
+  let headBlock = 0;
+  for await (const { data } of tempSource.read()) {
+    if (data.blocks.length > 0) {
+      headBlock = Math.max(...data.blocks.map((b) => b.header.number));
+      break; // Just get the latest block
+    }
+  }
+
+  if (headBlock === 0) {
+    console.error('❌ Failed to fetch current head block');
+    process.exit(1);
+  }
+
+  // Calculate dynamic start block
+  const startBlock = Math.max(1, headBlock - config.indexer.maxLookbackBlocks);
+
+  console.log(`📡 Current head block: ${headBlock.toLocaleString()}`);
+  console.log(`📍 Starting from block: ${startBlock.toLocaleString()} (${config.indexer.maxLookbackBlocks.toLocaleString()} blocks back)`);
   console.log(`🔍 Indexing: ERC20 Transfers + ERC4626 Deposits/Withdrawals\n`);
 
   const queryBuilder = new EvmQueryBuilder()

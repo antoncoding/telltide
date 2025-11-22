@@ -17,7 +17,7 @@ export type Config = {
     portalUrl: string;
   };
   indexer: {
-    startBlock: number;
+    maxLookbackBlocks: number; // Maximum blocks to look back from chain head
     useCache: boolean;
   };
   logging: {
@@ -40,7 +40,7 @@ export const config: Config = {
     portalUrl: process.env.SQD_PORTAL_URL ?? 'https://portal.sqd.dev/datasets/ethereum-mainnet',
   },
   indexer: {
-    startBlock: parseInt(process.env.INDEXER_START_BLOCK ?? '20900000', 10),
+    maxLookbackBlocks: parseInt(process.env.INDEXER_MAX_LOOKBACK_BLOCKS ?? '60000', 10), // ~7 days
     useCache: process.env.INDEXER_USE_CACHE === 'true',
   },
   logging: {

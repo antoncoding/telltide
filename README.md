@@ -195,6 +195,22 @@ Triggers when total deposits exceed 10K USDC (6 decimals) in 1 hour.
 ```
 Triggers when ANY of the 3 vaults exceeds 1M USDC withdrawn in 2 hours.
 
+**4. Use Block-Based Lookback for Efficiency**
+```json
+{
+  "type": "event_count",
+  "event_type": "erc20_transfer",
+  "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "window": "1m",
+  "lookback_blocks": 100,
+  "condition": {
+    "operator": ">",
+    "value": 5
+  }
+}
+```
+Triggers when USDC has more than 5 transfers in the last 100 blocks. Using `lookback_blocks` makes queries more efficient for small time windows by only scanning recent blocks instead of using time-based lookups.
+
 ### Webhook Payload
 
 When triggered, your webhook receives:
@@ -245,10 +261,10 @@ Key environment variables (see `.env.example`):
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/telltide` |
 | `API_PORT` | API server port | `3000` |
 | `WORKER_INTERVAL_SECONDS` | How often to check subscriptions | `30` |
-| `INDEXER_START_BLOCK` | **Always** starts from this block (no cursor) | `20900000` |
+| `INDEXER_MAX_LOOKBACK_BLOCKS` | Max blocks back from chain head | `60000` (~7 days) |
 | `SQD_PORTAL_URL` | SQD Portal endpoint | `https://portal.sqd.dev/datasets/ethereum-mainnet` |
 
-**Note on INDEXER_START_BLOCK:** The indexer does NOT track progress between restarts. It always starts fresh from this block. Set it to a recent block (~100k blocks back from latest) to avoid re-indexing old data. Duplicate events are automatically skipped.
+**Note on indexing:** The indexer **dynamically** calculates the start block on every startup by fetching the current blockchain head and going back `MAX_LOOKBACK_BLOCKS`. This ensures you always have recent data without manual configuration. Duplicate events are automatically skipped.
 
 ---
 

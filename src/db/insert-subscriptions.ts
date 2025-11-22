@@ -54,15 +54,16 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
   // // 3. Monitor ERC20 transfer spike (count-based)
   {
     name: 'USDC Transfer Spike',
-    description: 'Alert when USDC has more than 100 transfers in 15 minutes',
+    description: 'Alert when USDC has more than 5 transfers in recent 100 blocks',
     config: {
       type: 'event_count',
       event_type: 'erc20_transfer',
       contract_address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC on mainnet
       window: '1m',
+      lookback_blocks: 100, // Only look back 100 blocks for efficiency
       condition: {
         operator: '>',
-        value: 1,
+        value: 5,
       },
     },
   },

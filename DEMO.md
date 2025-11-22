@@ -48,15 +48,16 @@ Edit `.env` if needed:
 # Default values work fine for demo
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/telltide
 API_PORT=3001
-INDEXER_START_BLOCK=20900000  # Recent block (~100k blocks back = ~2 weeks of data)
-WORKER_INTERVAL_SECONDS=30    # Check every 30s
+INDEXER_MAX_LOOKBACK_BLOCKS=60000  # ~7 days of historical data
+WORKER_INTERVAL_SECONDS=30         # Check every 30s
 ```
 
-**Important:** The indexer does NOT track cursor between restarts. It always starts from `INDEXER_START_BLOCK`. This means:
-- ✅ Always have recent data after restart
-- ✅ No need to manage cursor state
-- ✅ Duplicate events are skipped (ON CONFLICT DO NOTHING)
-- ⚠️ Set to a recent block to avoid slow re-indexing on restart
+**How indexing works:**
+- ✅ **Fully dynamic** - Fetches current blockchain head on startup
+- ✅ **Always recent** - Starts from (current head - MAX_LOOKBACK_BLOCKS)
+- ✅ **No manual config** - No need to update start blocks as chain progresses
+- ✅ **No cursor tracking** - Fresh index on each restart
+- ✅ **Duplicate safe** - Events skipped if already exist (ON CONFLICT DO NOTHING)
 
 ### 3. Start All Services
 
@@ -270,6 +271,37 @@ curl -X POST http://localhost:3001/api/subscriptions \
   }'
 ```
 
+### Example 5: Block-Based Lookback (Efficient for Testing)
+
+Alert when USDC has more than 5 transfers in the last 100 blocks (most efficient for recent data):
+
+```bash
+curl -X POST http://localhost:3001/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "name": "Recent USDC Activity",
+    "webhook_url": "https://webhook.site/your-unique-url",
+    "meta_event_config": {
+      "type": "event_count",
+      "event_type": "erc20_transfer",
+      "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "window": "1m",
+      "lookback_blocks": 100,
+      "condition": {
+        "operator": ">",
+        "value": 5
+      }
+    }
+  }'
+```
+
+**Why use `lookback_blocks`?**
+- 🚀 More efficient queries (scans only 100 blocks instead of all data in time window)
+- 🎯 Perfect for testing (quickly see results with recent data)
+- 📊 Predictable performance (not dependent on block time variance)
+- 💡 Great for small time windows like "1m" or "5m"
+
 ---
 
 ## 🧪 Testing Workflow
@@ -402,6 +434,13 @@ npx tsc --noEmit
 - Minutes: `1m`, `5m`, `15m`, `30m`
 - Hours: `1h`, `2h`, `6h`, `12h`, `24h`
 - Days: `1d`, `7d`
+
+### Block-Based Lookback
+- Optional `lookback_blocks` field for efficient queries
+- Scans only the specified number of recent blocks
+- More predictable performance than time-based windows
+- Example: `lookback_blocks: 100` checks only the last 100 blocks
+- Perfect for testing and small time windows
 
 ### Comparison Operators
 - `>` - Greater than
