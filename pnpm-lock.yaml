@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@subsquid/evm-abi':
+        specifier: ^0.3.1
+        version: 0.3.1
+      '@subsquid/evm-codec':
+        specifier: ^0.3.0
+        version: 0.3.0
       '@subsquid/pipes':
         specifier: 0.1.0-beta.6
         version: 0.1.0-beta.6(@subsquid/logger@1.4.0)(pg@8.16.3)

@@ -94,6 +94,8 @@ export class MetaEventDetector {
           config.to_address
         );
 
+        console.log(`Counting evnet for contract ${contract.slice(0, 8)} --- ${count}`)
+
         const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
         const triggered = this.evaluateCondition(count, config.condition.operator, threshold);
 

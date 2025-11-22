@@ -40,7 +40,7 @@ export const config: Config = {
     portalUrl: process.env.SQD_PORTAL_URL ?? 'https://portal.sqd.dev/datasets/ethereum-mainnet',
   },
   indexer: {
-    startBlock: parseInt(process.env.INDEXER_START_BLOCK ?? '20000000', 10),
+    startBlock: parseInt(process.env.INDEXER_START_BLOCK ?? '20900000', 10),
     useCache: process.env.INDEXER_USE_CACHE === 'true',
   },
   logging: {

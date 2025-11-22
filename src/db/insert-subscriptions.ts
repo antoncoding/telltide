@@ -62,7 +62,7 @@ const subscriptionTemplates: SubscriptionTemplate[] = [
       window: '1m',
       condition: {
         operator: '>',
-        value: 100,
+        value: 1,
       },
     },
   },

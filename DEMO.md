@@ -1,412 +1,457 @@
-# Demo Guide - Vault Withdrawal Monitoring
+# 🌊 TellTide Demo Guide
 
-## 🎯 What Was Built
+**Stay early. Stay safe in the dark forest.**
 
-A complete meta-event detection system that supports:
+---
 
-1. **ERC20 + ERC4626 Event Indexing** (removed all Morpho code)
-2. **Vault State Tracking** (RPC polling for totalAssets/totalSupply)
-3. **Percentage-based Conditions** (e.g., ">20% of vault assets withdrawn")
-4. **Compound Conditions** (check multiple vaults with AND/OR logic)
-5. **Webhook Notifications** with automatic retry
+## 🎯 What is TellTide?
+
+TellTide monitors ERC20 transfers and ERC4626 vault events and sends webhook notifications when **aggregated conditions** are met over time windows.
+
+**Key Features:**
+- ✅ Real-time ERC20 + ERC4626 event indexing using SQD Pipes SDK
+- ✅ Rolling time window aggregations (sum, avg, count, min, max)
+- ✅ Multi-contract monitoring (check ANY of multiple vaults/tokens)
+- ✅ Address filtering (track specific whale addresses)
+- ✅ Webhook notifications with automatic retry
+- ✅ Absolute value conditions only (simple and reliable)
+
+**What's NOT in this version:**
+- ❌ No RPC polling or vault state tracking
+- ❌ No percentage-based conditions
+- ❌ No compound AND/OR conditions
+
+This is a **simplified, production-ready** implementation perfect for hackathon demos!
+
+---
 
 ## 🚀 Quick Start
 
-### 1. Setup
+### 1. Setup Environment
 
 ```bash
 # Start PostgreSQL
 docker compose up -d
 
-# Migrate database (includes new vault tables)
+# Install dependencies
+pnpm install
+
+# Run database migrations
 pnpm db:migrate
-
-# Add vault addresses to track
-# Edit .env and add:
-VAULT_ADDRESSES=0xVaultA,0xVaultB,0xVaultC
-RPC_URL=https://eth.llamarpc.com
 ```
 
-### 2. Start All Services
+### 2. Configure (Optional)
 
-```bash
-# Start everything
-pnpm dev
-
-# Or individually:
-pnpm indexer  # Indexes ERC20 + ERC4626 events
-pnpm worker   # Detects meta-events + tracks vault state
-pnpm api      # REST API on :3000
-```
-
-## 📋 Demo Case: "Any of 3 Vaults >20% Withdrawal"
-
-### Step 1: Register Vaults (Automatic)
-
-The worker automatically registers vaults from `.env` on startup:
+Edit `.env` if needed:
 
 ```env
-VAULT_ADDRESSES=0xVaultA,0xVaultB,0xVaultC
+# Default values work fine for demo
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/telltide
+API_PORT=3001
+INDEXER_START_BLOCK=20900000  # Recent block (~100k blocks back = ~2 weeks of data)
+WORKER_INTERVAL_SECONDS=30    # Check every 30s
+```
+
+**Important:** The indexer does NOT track cursor between restarts. It always starts from `INDEXER_START_BLOCK`. This means:
+- ✅ Always have recent data after restart
+- ✅ No need to manage cursor state
+- ✅ Duplicate events are skipped (ON CONFLICT DO NOTHING)
+- ⚠️ Set to a recent block to avoid slow re-indexing on restart
+
+### 3. Start All Services
+
+```bash
+# Start everything at once
+pnpm dev
+
+# Or start individually in separate terminals:
+pnpm indexer  # Indexes blockchain events
+pnpm worker   # Checks subscriptions every 30s
+pnpm api      # REST API on :3001
 ```
 
 You'll see:
 ```
-📝 Registered vault: 0xVaultA
-📝 Registered vault: 0xVaultB
-📝 Registered vault: 0xVaultC
-🔍 Tracking 3 vault(s)...
-✅ Tracked vault 0xVaultA... | Assets: 1000000 | Supply: 500000
+🌊 Starting TellTide Server...
+
+Starting Indexer...
+🌊 Starting TellTide Event Indexer...
+✅ Database connected
+
+Starting Worker...
+🌊 Starting TellTide Meta-Event Worker...
+⏱️  Check interval: 30 seconds
+
+Starting API...
+🌊 Starting TellTide API Server...
+✅ API Server running on http://localhost:3001
 ```
 
-### Step 2: Create Subscription
+---
 
-**Option A: Check ANY of 3 vaults** (OR logic - simpler)
+## 📋 Demo Case: "Alert When ANY Vault Has High Withdrawals"
+
+### Step 1: Get a Webhook URL
+
+Go to [webhook.site](https://webhook.site) and copy your unique URL.
+
+### Step 2: Create a Subscription
+
+**Scenario:** Alert when **ANY** of 3 vaults has more than 1M USDC withdrawn in 2 hours.
 
 ```bash
-curl -X POST http://localhost:3000/api/subscriptions \
+curl -X POST http://localhost:3001/api/subscriptions \
   -H "Content-Type: application/json" \
   -d '{
-    "user_id": "demo",
-    "name": "3 Vaults - 20% Withdrawal Alert",
-    "webhook_url": "https://webhook.site/YOUR-ID",
+    "user_id": "demo-user",
+    "name": "High Vault Withdrawal Alert",
+    "webhook_url": "https://webhook.site/your-unique-url",
     "meta_event_config": {
       "type": "rolling_aggregate",
       "event_type": "erc4626_withdraw",
       "contracts": [
-        "0xVaultA",
-        "0xVaultB",
-        "0xVaultC"
+        "0x83F20F44975D03b1b09e64809B757c47f942BEeA",
+        "0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB",
+        "0x3A1659e4b1f3b1E2F8C4D6D1A9e4E3e9F8F7D6C5"
       ],
-      "window": "1h",
+      "window": "2h",
       "aggregation": "sum",
       "field": "assets",
       "condition": {
         "operator": ">",
-        "value": 0.20,
-        "value_type": "percentage"
+        "value": 1000000000000
       }
     }
   }'
 ```
 
 **How it works:**
-- Checks each vault independently
-- If ANY vault has >20% withdrawal in 1h → triggers
-- Webhook includes `triggered_by_contract` showing which vault
-
-**Option B: Compound condition** (explicit OR logic)
-
-```bash
-curl -X POST http://localhost:3000/api/subscriptions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "demo",
-    "name": "Compound: 3 Vaults OR",
-    "webhook_url": "https://webhook.site/YOUR-ID",
-    "meta_event_config": {
-      "type": "compound",
-      "operator": "OR",
-      "conditions": [
-        {
-          "type": "rolling_aggregate",
-          "event_type": "erc4626_withdraw",
-          "contract_address": "0xVaultA",
-          "window": "1h",
-          "aggregation": "sum",
-          "field": "assets",
-          "condition": {
-            "operator": ">",
-            "value": 0.20,
-            "value_type": "percentage"
-          }
-        },
-        {
-          "type": "rolling_aggregate",
-          "event_type": "erc4626_withdraw",
-          "contract_address": "0xVaultB",
-          "window": "1h",
-          "aggregation": "sum",
-          "field": "assets",
-          "condition": {
-            "operator": ">",
-            "value": 0.20,
-            "value_type": "percentage"
-          }
-        },
-        {
-          "type": "rolling_aggregate",
-          "event_type": "erc4626_withdraw",
-          "contract_address": "0xVaultC",
-          "window": "1h",
-          "aggregation": "sum",
-          "field": "assets",
-          "condition": {
-            "operator": ">",
-            "value": 0.20,
-            "value_type": "percentage"
-          }
-        }
-      ]
-    }
-  }'
-```
+- Worker checks each vault independently
+- If **ANY** vault exceeds 1M USDC withdrawn → triggers webhook
+- Response includes `triggered_by_contract` showing which vault
 
 ### Step 3: Wait for Detection
 
-Worker checks every 30s. When triggered:
+The worker checks every 30 seconds. When a condition is met:
 
 ```
 🔍 Checking active subscriptions...
 📋 Found 1 active subscription(s)
-🎯 Meta-event triggered for "3 Vaults - 20% Withdrawal Alert"!
-   Triggered by contract: 0xVaultA
+🎯 Meta-event triggered for "High Vault Withdrawal Alert"!
+   Triggered by contract: 0x83f20f44975d03b1b09e64809b757c47f942beea
 📤 Dispatching 1 webhook(s)...
 ✅ Successful: 1 | ❌ Failed: 0
 ```
 
-### Step 4: Webhook Payload
+### Step 4: Receive Webhook
 
-You receive:
+Your webhook.site URL receives:
 
 ```json
 {
-  "subscription_id": "uuid",
-  "subscription_name": "3 Vaults - 20% Withdrawal Alert",
-  "triggered_at": "2025-11-22T12:00:00.000Z",
+  "subscription_id": "123e4567-e89b-12d3-a456-426614174000",
+  "subscription_name": "High Vault Withdrawal Alert",
+  "triggered_at": "2025-11-22T14:30:00.000Z",
   "meta_event": {
     "type": "rolling_aggregate",
     "condition_met": true,
-    "aggregated_value": 0.25,
-    "threshold": 0.20,
-    "window": "1h",
-    "triggered_by_contract": "0xVaultA"
-  },
-  "events": [
-    {
-      "block_number": 20500000,
-      "timestamp": "2025-11-22T11:30:00.000Z",
-      "event_type": "erc4626_withdraw",
-      "contract_address": "0xvaulta",
-      "data": {
-        "sender": "0x...",
-        "receiver": "0x...",
-        "owner": "0x...",
-        "assets": "250000000000000000000",
-        "shares": "250000000000000000000"
-      }
-    }
-  ]
-}
-```
-
-## 📊 More Examples
-
-### Example 1: ERC20 Whale Transfer Alert (Absolute Value)
-
-Detect when >500k USDC leaves a specific address:
-
-```json
-{
-  "type": "rolling_aggregate",
-  "event_type": "erc20_transfer",
-  "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-  "from_address": "0xWhaleAddress",
-  "window": "1h",
-  "aggregation": "sum",
-  "field": "value",
-  "condition": {
-    "operator": ">",
-    "value": 500000000000,
-    "value_type": "absolute"
+    "aggregated_value": 1500000000000,
+    "threshold": 1000000000000,
+    "window": "2h",
+    "triggered_by_contract": "0x83f20f44975d03b1b09e64809b757c47f942beea"
   }
 }
 ```
-
-### Example 2: Vault Deposit Surge (Percentage)
-
-Alert when deposits exceed 10% of vault in 15min:
-
-```json
-{
-  "type": "rolling_aggregate",
-  "event_type": "erc4626_deposit",
-  "contract_address": "0xVaultAddress",
-  "window": "15m",
-  "aggregation": "sum",
-  "field": "assets",
-  "condition": {
-    "operator": ">",
-    "value": 0.10,
-    "value_type": "percentage"
-  }
-}
-```
-
-### Example 3: AND Condition (Both Must Trigger)
-
-Alert only if BOTH vaults have >15% withdrawal:
-
-```json
-{
-  "type": "compound",
-  "operator": "AND",
-  "conditions": [
-    {
-      "type": "rolling_aggregate",
-      "event_type": "erc4626_withdraw",
-      "contract_address": "0xVaultA",
-      "window": "1h",
-      "aggregation": "sum",
-      "field": "assets",
-      "condition": { "operator": ">", "value": 0.15, "value_type": "percentage" }
-    },
-    {
-      "type": "rolling_aggregate",
-      "event_type": "erc4626_withdraw",
-      "contract_address": "0xVaultB",
-      "window": "1h",
-      "aggregation": "sum",
-      "field": "assets",
-      "condition": { "operator": ">", "value": 0.15, "value_type": "percentage" }
-    }
-  ]
-}
-```
-
-## 🔍 How Percentage Calculation Works
-
-1. **Indexer** streams ERC4626 Withdraw events from Portal
-2. **Vault Tracker** polls RPC every 60s:
-   ```
-   totalAssets() → 1,000,000 USDC
-   totalSupply() → 500,000 shares
-   ```
-3. **Detector** calculates on each check:
-   ```typescript
-   withdrawnAmount = SUM(withdraw.assets) in last 1h  // e.g., 250,000
-   percentage = withdrawnAmount / totalAssets         // 250,000 / 1,000,000 = 0.25
-   triggered = percentage > 0.20                      // 0.25 > 0.20 ✓
-   ```
-
-## ⚙️ System Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│              Ethereum Mainnet                       │
-│     (ERC20 Transfers + ERC4626 Vaults)             │
-└───────────────┬─────────────────────────────────────┘
-                │
-      ┌─────────┴──────────┐
-      │                    │
-      ▼                    ▼
-┌──────────┐         ┌──────────┐
-│  Portal  │         │   RPC    │
-│  (Events)│         │ (State)  │
-└─────┬────┘         └────┬─────┘
-      │                   │
-      ▼                   ▼
-┌──────────┐         ┌──────────────┐
-│ Indexer  │         │Vault Tracker │
-└─────┬────┘         └────┬─────────┘
-      │                   │
-      │    PostgreSQL     │
-      ├───────────────────┤
-      │  events           │
-      │  vault_state      │
-      │  subscriptions    │
-      └──────┬────────────┘
-             │
-             ▼
-      ┌─────────────┐
-      │   Worker    │
-      │  (Detector) │
-      └──────┬──────┘
-             │
-             ▼
-        Webhook POST
-```
-
-## 🧪 Testing Locally
-
-### 1. Use webhook.site
-
-```bash
-# Get a test webhook URL
-open https://webhook.site
-
-# Copy the unique URL and use in subscription
-webhook_url: "https://webhook.site/abc123"
-```
-
-### 2. Check vault state
-
-```sql
--- View vault state snapshots
-SELECT * FROM vault_state ORDER BY timestamp DESC LIMIT 10;
-
--- View events
-SELECT event_type, COUNT(*) FROM events GROUP BY event_type;
-```
-
-### 3. Manual trigger test
-
-```sql
--- Insert test withdrawal (simulate 30% withdrawal)
-INSERT INTO events (
-  block_number, timestamp, event_type, contract_address,
-  from_address, to_address, data, transaction_hash, log_index
-) VALUES (
-  20000000,
-  NOW(),
-  'erc4626_withdraw',
-  '0xvaulta',
-  '0xsender',
-  '0xreceiver',
-  '{"assets": "300000000000000000000", "shares": "300000"}'::jsonb,
-  '0xtest123',
-  1
-);
-
--- Worker will detect on next check (30s)
-```
-
-## 📝 Key Features Implemented
-
-✅ **ERC20 + ERC4626 Support** - Removed all Morpho code
-✅ **Vault State Tracking** - RPC polling for totalAssets/totalSupply
-✅ **Percentage Conditions** - Compare against vault state
-✅ **Absolute Conditions** - Direct value comparisons
-✅ **Multiple Contracts** - Check array of addresses (OR logic)
-✅ **Compound Conditions** - Explicit AND/OR operators
-✅ **from_address/to_address** - Filter ERC20 by sender/receiver
-✅ **Webhook Retries** - 3 attempts with backoff
-✅ **Fork Handling** - Automatic rollback on chain reorgs
-
-## 🐛 Troubleshooting
-
-**Vault state not updating?**
-- Check RPC_URL is accessible
-- Verify vault addresses in .env
-- Check worker logs for RPC errors
-
-**Percentage always 0?**
-- Ensure vault is registered (check vault_registry table)
-- Check vault_state table has recent entries
-- Verify RPC is returning valid data
-
-**Webhook not firing?**
-- Check subscription is active
-- Verify condition threshold is realistic
-- Check worker logs for detection attempts
-- Test webhook URL is accessible
-
-## 🚀 Next Steps
-
-1. **Add real vault addresses** to `.env`
-2. **Lower start block** if needed for recent data
-3. **Test with mainnet vaults** that have actual activity
-4. **Deploy to production** with proper RPC (Alchemy/Infura)
 
 ---
 
-**Note**: The project uses "ChaosChain" as a placeholder name in database/config - feel free to rename!
+## 📊 More Demo Examples
+
+### Example 1: ERC20 Transfer Spike Detection
+
+Alert when USDC has more than 100 transfers in 15 minutes:
+
+```bash
+curl -X POST http://localhost:3001/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "name": "USDC Transfer Spike",
+    "webhook_url": "https://webhook.site/your-unique-url",
+    "meta_event_config": {
+      "type": "event_count",
+      "event_type": "erc20_transfer",
+      "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "window": "15m",
+      "condition": {
+        "operator": ">",
+        "value": 100
+      }
+    }
+  }'
+```
+
+### Example 2: Whale Tracking (Outflow)
+
+Alert when a specific address transfers out more than 5M USDC in 24 hours:
+
+```bash
+curl -X POST http://localhost:3001/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "name": "Whale Outflow Alert",
+    "webhook_url": "https://webhook.site/your-unique-url",
+    "meta_event_config": {
+      "type": "rolling_aggregate",
+      "event_type": "erc20_transfer",
+      "contract_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "from_address": "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503",
+      "window": "24h",
+      "aggregation": "sum",
+      "field": "value",
+      "condition": {
+        "operator": ">",
+        "value": 5000000000000
+      }
+    }
+  }'
+```
+
+### Example 3: Large Deposit Activity
+
+Alert when total deposits to a vault exceed 2M USDC in 1 hour:
+
+```bash
+curl -X POST http://localhost:3001/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "name": "Large Deposit Activity",
+    "webhook_url": "https://webhook.site/your-unique-url",
+    "meta_event_config": {
+      "type": "rolling_aggregate",
+      "event_type": "erc4626_deposit",
+      "contract_address": "0x83F20F44975D03b1b09e64809B757c47f942BEeA",
+      "window": "1h",
+      "aggregation": "sum",
+      "field": "assets",
+      "condition": {
+        "operator": ">",
+        "value": 2000000000000
+      }
+    }
+  }'
+```
+
+### Example 4: Average Withdrawal Size
+
+Alert when average withdrawal exceeds 100K USDC in 30 minutes:
+
+```bash
+curl -X POST http://localhost:3001/api/subscriptions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "name": "Large Average Withdrawal",
+    "webhook_url": "https://webhook.site/your-unique-url",
+    "meta_event_config": {
+      "type": "rolling_aggregate",
+      "event_type": "erc4626_withdraw",
+      "contract_address": "0x83F20F44975D03b1b09e64809B757c47f942BEeA",
+      "window": "30m",
+      "aggregation": "avg",
+      "field": "assets",
+      "condition": {
+        "operator": ">",
+        "value": 100000000000
+      }
+    }
+  }'
+```
+
+---
+
+## 🧪 Testing Workflow
+
+### Quick Test Script
+
+Use the included script to insert example subscriptions:
+
+```bash
+# 1. Edit the script and set your webhook URL
+code src/db/insert-subscriptions.ts
+
+# 2. Insert subscriptions
+pnpm db:insert-subs
+
+# 3. Check they were created
+curl http://localhost:3001/api/subscriptions
+```
+
+### Manual Testing
+
+```bash
+# Check if events are being indexed
+curl http://localhost:3001/api/subscriptions
+
+# View logs
+# Indexer terminal shows: "✅ Inserted X events"
+# Worker terminal shows: "🔍 Checking active subscriptions..."
+```
+
+### Database Inspection
+
+```bash
+# Connect to database
+docker exec -it telltide-postgres psql -U postgres -d telltide
+
+# Check indexed events
+SELECT event_type, COUNT(*) FROM events GROUP BY event_type;
+
+# Check subscriptions
+SELECT id, name, is_active FROM subscriptions;
+
+# Check notifications sent
+SELECT * FROM notifications_log ORDER BY created_at DESC LIMIT 10;
+```
+
+---
+
+## ⚙️ How It Works
+
+### Architecture
+
+```
+Ethereum Blockchain (ERC20 + ERC4626)
+         ↓
+   SQD Portal API
+         ↓
+  TellTide Indexer (stores events in PostgreSQL)
+         ↓
+    Worker (checks subscriptions every 30s)
+         ↓
+   Your Webhook URL 🎯
+```
+
+### Meta-Event Detection
+
+**Event Count:**
+```typescript
+// Count USDC transfers in last 15 minutes
+SELECT COUNT(*) FROM events
+WHERE event_type = 'erc20_transfer'
+  AND contract_address = '0xA0b8...'
+  AND timestamp >= NOW() - INTERVAL '15 minutes'
+
+// If count > 100 → trigger webhook
+```
+
+**Rolling Aggregate:**
+```typescript
+// Sum withdrawn assets from vault in last 2 hours
+SELECT SUM((data->>'assets')::numeric) FROM events
+WHERE event_type = 'erc4626_withdraw'
+  AND contract_address = '0x83F2...'
+  AND timestamp >= NOW() - INTERVAL '2 hours'
+
+// If sum > 1,000,000,000,000 → trigger webhook
+```
+
+---
+
+## 🛠️ Development Commands
+
+```bash
+# Insert example subscriptions
+pnpm db:insert-subs
+
+# Clean all data (keeps schema)
+pnpm db:clean
+
+# Full database reset
+docker compose down -v
+docker compose up -d
+pnpm db:migrate
+
+# Check TypeScript errors
+npx tsc --noEmit
+```
+
+---
+
+## 📋 Supported Features
+
+### Event Types
+- `erc20_transfer` - ERC20 Transfer events
+- `erc4626_deposit` - ERC4626 vault deposits
+- `erc4626_withdraw` - ERC4626 vault withdrawals
+
+### Meta-Event Types
+- `event_count` - Count events in time window
+- `rolling_aggregate` - Aggregate field values (sum, avg, min, max)
+
+### Aggregations
+- `sum` - Total of all values
+- `avg` - Average of all values
+- `min` - Minimum value
+- `max` - Maximum value
+- `count` - Use `event_count` type instead
+
+### Time Windows
+- Minutes: `1m`, `5m`, `15m`, `30m`
+- Hours: `1h`, `2h`, `6h`, `12h`, `24h`
+- Days: `1d`, `7d`
+
+### Comparison Operators
+- `>` - Greater than
+- `<` - Less than
+- `>=` - Greater than or equal
+- `<=` - Less than or equal
+- `=` - Equal
+- `!=` - Not equal
+
+---
+
+## 🐛 Troubleshooting
+
+**Events not being indexed?**
+- Check indexer logs for errors
+- Verify `INDEXER_START_BLOCK` is recent enough
+- Ensure database is running: `docker ps`
+
+**Webhook not firing?**
+- Check subscription is active: `GET /api/subscriptions`
+- Verify condition threshold is realistic
+- Check worker logs: should see "🔍 Checking active subscriptions..."
+- Test webhook URL works: visit webhook.site
+
+**Worker not checking?**
+- Ensure worker service is running
+- Check `WORKER_INTERVAL_SECONDS` in `.env`
+- Look for "No active subscriptions found" message
+
+**Database connection errors?**
+- Run `docker compose ps` to check PostgreSQL
+- Verify `DATABASE_URL` in `.env`
+- Try: `docker compose down && docker compose up -d`
+
+---
+
+## 🚀 Production Deployment
+
+**Before deploying:**
+
+1. ✅ Use managed PostgreSQL (AWS RDS, Supabase, etc.)
+2. ✅ Set `INDEXER_START_BLOCK` appropriately (recent for faster sync)
+3. ✅ Use production webhook endpoints (not webhook.site)
+4. ✅ Add authentication to the API
+5. ✅ Set up monitoring and logging
+6. ✅ Configure proper CORS if needed
+7. ✅ Use process manager (PM2) or containerize
+
+---
+
+<div align="center">
+  <sub>Built with SQD Pipes SDK | Powered by PostgreSQL | Made for the dark forest 🌲</sub>
+</div>

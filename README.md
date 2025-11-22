@@ -245,8 +245,10 @@ Key environment variables (see `.env.example`):
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/telltide` |
 | `API_PORT` | API server port | `3000` |
 | `WORKER_INTERVAL_SECONDS` | How often to check subscriptions | `30` |
-| `INDEXER_START_BLOCK` | Starting block for indexer | `20000000` |
+| `INDEXER_START_BLOCK` | **Always** starts from this block (no cursor) | `20900000` |
 | `SQD_PORTAL_URL` | SQD Portal endpoint | `https://portal.sqd.dev/datasets/ethereum-mainnet` |
+
+**Note on INDEXER_START_BLOCK:** The indexer does NOT track progress between restarts. It always starts fresh from this block. Set it to a recent block (~100k blocks back from latest) to avoid re-indexing old data. Duplicate events are automatically skipped.
 
 ---
 
@@ -259,9 +261,18 @@ Quickly create example subscriptions for testing:
 pnpm db:insert-subs
 ```
 
-This creates 8 example meta-event subscriptions with various configurations (withdrawal alerts, transfer spikes, whale tracking, etc.). Edit the script first to set your webhook URL and real contract addresses.
+This creates example meta-event subscriptions. Edit the script first to set your webhook URL and enable the subscriptions you want.
 
-### Reset Database
+### Clean Database
+Delete all data without destroying the database schema:
+
+```bash
+pnpm db:clean
+```
+
+This removes all events, subscriptions, notifications, and resets the indexer cursor. Useful for testing from a clean slate.
+
+### Reset Database (Full Reset)
 ```bash
 docker compose down -v
 docker compose up -d

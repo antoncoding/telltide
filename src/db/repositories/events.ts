@@ -36,40 +36,49 @@ export const eventsRepository = {
   async insertEventsBatch(events: Array<Omit<Event, 'id' | 'created_at'>>): Promise<void> {
     if (events.length === 0) return;
 
-    const values = events
-      .map(
-        (_, i) =>
-          `($${i * 9 + 1}, $${i * 9 + 2}, $${i * 9 + 3}, $${i * 9 + 4}, $${i * 9 + 5}, $${i * 9 + 6}, $${i * 9 + 7}, $${i * 9 + 8}, $${i * 9 + 9})`
-      )
-      .join(', ');
+    // PostgreSQL has a limit of ~65535 parameters
+    // With 9 params per event, we can safely insert ~7000 events per batch
+    // But let's use 500 to be safe and avoid memory issues
+    const BATCH_SIZE = 500;
 
-    const params = events.flatMap((e) => [
-      e.block_number,
-      e.timestamp,
-      e.event_type,
-      e.contract_address,
-      e.from_address,
-      e.to_address,
-      JSON.stringify(e.data),
-      e.transaction_hash,
-      e.log_index,
-    ]);
+    for (let i = 0; i < events.length; i += BATCH_SIZE) {
+      const batch = events.slice(i, i + BATCH_SIZE);
 
-    await query(
-      `INSERT INTO events (
-        block_number,
-        timestamp,
-        event_type,
-        contract_address,
-        from_address,
-        to_address,
-        data,
-        transaction_hash,
-        log_index
-      ) VALUES ${values}
-      ON CONFLICT (transaction_hash, log_index) DO NOTHING`,
-      params
-    );
+      const values = batch
+        .map(
+          (_, idx) =>
+            `($${idx * 9 + 1}, $${idx * 9 + 2}, $${idx * 9 + 3}, $${idx * 9 + 4}, $${idx * 9 + 5}, $${idx * 9 + 6}, $${idx * 9 + 7}, $${idx * 9 + 8}, $${idx * 9 + 9})`
+        )
+        .join(', ');
+
+      const params = batch.flatMap((e) => [
+        e.block_number,
+        e.timestamp,
+        e.event_type,
+        e.contract_address,
+        e.from_address,
+        e.to_address,
+        JSON.stringify(e.data),
+        e.transaction_hash,
+        e.log_index,
+      ]);
+
+      await query(
+        `INSERT INTO events (
+          block_number,
+          timestamp,
+          event_type,
+          contract_address,
+          from_address,
+          to_address,
+          data,
+          transaction_hash,
+          log_index
+        ) VALUES ${values}
+        ON CONFLICT (transaction_hash, log_index) DO NOTHING`,
+        params
+      );
+    }
   },
 
   async getEventsByTimeWindow(

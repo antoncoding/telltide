@@ -3,7 +3,6 @@ import { evmPortalSource, EvmQueryBuilder, commonAbis } from '@subsquid/pipes/ev
 import { portalSqliteCache } from '@subsquid/pipes/portal-cache/node';
 import { config } from '../config/index.js';
 import { eventsRepository } from '../db/repositories/events.js';
-import { cursorRepository } from '../db/repositories/cursor.js';
 import { testConnection } from '../db/client.js';
 import { events as erc4626Abi } from '../abi/erc4626.js';
 import type { EventType } from '../types/index.js';
@@ -17,10 +16,12 @@ async function main() {
     process.exit(1);
   }
 
-  const savedCursor = await cursorRepository.getCursor();
-  const startBlock = savedCursor > 0 ? savedCursor : config.indexer.startBlock;
+  // Always start from configured block (no cursor tracking)
+  // This ensures we always have recent data on restart
+  const startBlock = config.indexer.startBlock;
 
   console.log(`📍 Starting from block: ${startBlock}`);
+  console.log(`💡 Always indexing from this block on restart (no cursor tracking)`);
   console.log(`🔍 Indexing: ERC20 Transfers + ERC4626 Deposits/Withdrawals\n`);
 
   const queryBuilder = new EvmQueryBuilder()
@@ -73,7 +74,7 @@ async function main() {
 
   const target = createTarget({
     write: async ({ logger, read }) => {
-      for await (const { data } of read(savedCursor > 0 ? { number: savedCursor } : undefined)) {
+      for await (const { data } of read()) {
         const eventsToInsert: Array<{
           block_number: number;
           timestamp: Date;
@@ -97,39 +98,53 @@ async function main() {
 
             const topic0 = log.topics[0];
 
-            if (topic0 === commonAbis.erc20.events.Transfer.topic) {
-              eventType = 'erc20_transfer';
-              const decoded = commonAbis.erc20.events.Transfer.decode(log);
-              fromAddress = decoded.from;
-              toAddress = decoded.to;
-              decodedData = {
-                from: decoded.from,
-                to: decoded.to,
-                value: decoded.value.toString(),
-              };
-            } else if (topic0 === erc4626Abi.Deposit.topic) {
-              eventType = 'erc4626_deposit';
-              const decoded = erc4626Abi.Deposit.decode(log);
-              fromAddress = decoded.sender;
-              toAddress = decoded.owner;
-              decodedData = {
-                sender: decoded.sender,
-                owner: decoded.owner,
-                assets: decoded.assets.toString(),
-                shares: decoded.shares.toString(),
-              };
-            } else if (topic0 === erc4626Abi.Withdraw.topic) {
-              eventType = 'erc4626_withdraw';
-              const decoded = erc4626Abi.Withdraw.decode(log);
-              fromAddress = decoded.sender;
-              toAddress = decoded.receiver;
-              decodedData = {
-                sender: decoded.sender,
-                receiver: decoded.receiver,
-                owner: decoded.owner,
-                assets: decoded.assets.toString(),
-                shares: decoded.shares.toString(),
-              };
+            try {
+              if (topic0 === commonAbis.erc20.events.Transfer.topic) {
+                // ERC20 Transfer has 3 topics: signature + from + to
+                if (log.topics.length !== 3) continue;
+
+                eventType = 'erc20_transfer';
+                const decoded = commonAbis.erc20.events.Transfer.decode(log);
+                fromAddress = decoded.from;
+                toAddress = decoded.to;
+                decodedData = {
+                  from: decoded.from,
+                  to: decoded.to,
+                  value: decoded.value.toString(),
+                };
+              } else if (topic0 === erc4626Abi.Deposit.topic) {
+                // ERC4626 Deposit has 3 topics: signature + sender + owner
+                if (log.topics.length !== 3) continue;
+
+                eventType = 'erc4626_deposit';
+                const decoded = erc4626Abi.Deposit.decode(log);
+                fromAddress = decoded.sender;
+                toAddress = decoded.owner;
+                decodedData = {
+                  sender: decoded.sender,
+                  owner: decoded.owner,
+                  assets: decoded.assets.toString(),
+                  shares: decoded.shares.toString(),
+                };
+              } else if (topic0 === erc4626Abi.Withdraw.topic) {
+                // ERC4626 Withdraw has 4 topics: signature + sender + receiver + owner
+                if (log.topics.length !== 4) continue;
+
+                eventType = 'erc4626_withdraw';
+                const decoded = erc4626Abi.Withdraw.decode(log);
+                fromAddress = decoded.sender;
+                toAddress = decoded.receiver;
+                decodedData = {
+                  sender: decoded.sender,
+                  receiver: decoded.receiver,
+                  owner: decoded.owner,
+                  assets: decoded.assets.toString(),
+                  shares: decoded.shares.toString(),
+                };
+              }
+            } catch (error) {
+              // Skip events that fail to decode (non-standard implementations)
+              continue;
             }
 
             if (eventType) {
@@ -154,16 +169,8 @@ async function main() {
         }
 
         const lastBlock = Math.max(...data.blocks.map((b) => b.header.number));
-        await cursorRepository.updateCursor(lastBlock);
-
         logger.info(`📦 Processed block ${lastBlock} | Events: ${eventsToInsert.length}`);
       }
-    },
-    onRollback: async ({ cursor }) => {
-      console.warn(`⚠️  Fork detected at block ${cursor.number}`);
-      await eventsRepository.deleteEventsAfterBlock(cursor.number);
-      await cursorRepository.updateCursor(cursor.number);
-      console.log(`🔄 Rolled back to block ${cursor.number}`);
     },
   });
 
