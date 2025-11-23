@@ -10,6 +10,8 @@ type DetectionResult = {
   triggeredByContract?: string;
 };
 
+const timestamp = () => new Date().toLocaleTimeString('en-US', { hour12: false, fractionalSecondDigits: 3 });
+
 export class MetaEventDetector {
   private parseWindow(window: string): number {
     const match = window.match(/^(\d+)(m|h|d)$/);
@@ -85,6 +87,11 @@ export class MetaEventDetector {
     const contracts = config.contracts ?? (config.contract_address ? [config.contract_address] : undefined);
     const chain = config.chain ?? 'ethereum';
 
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - windowMinutes * 60 * 1000);
+    console.log(`[${timestamp()}] 🔎 Query: type=event_count event=${config.event_type} chain=${chain} window=${windowMinutes}min`);
+    console.log(`[${timestamp()}]    Time range: ${windowStart.toISOString()} to ${now.toISOString()}`);
+
     // If multiple contracts, check each
     if (contracts && contracts.length > 1) {
       for (const contract of contracts) {
@@ -133,6 +140,8 @@ export class MetaEventDetector {
       config.market_id
     );
 
+    console.log(`[${timestamp()}] 📈 Result: count=${count}`);
+
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
     const triggered = this.evaluateCondition(count, config.condition.operator, threshold);
 
@@ -160,6 +169,11 @@ export class MetaEventDetector {
     const aggregation = config.aggregation as Exclude<typeof config.aggregation, 'count'>;
     const contracts = config.contracts ?? (config.contract_address ? [config.contract_address] : undefined);
     const chain = config.chain ?? 'ethereum';
+
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - windowMinutes * 60 * 1000);
+    console.log(`[${timestamp()}] 🔎 Query: type=rolling_aggregate event=${config.event_type} chain=${chain} window=${windowMinutes}min`);
+    console.log(`[${timestamp()}]    Time range: ${windowStart.toISOString()} to ${now.toISOString()}`);
 
     // If multiple contracts, check each
     if (contracts && contracts.length > 1) {
@@ -211,6 +225,8 @@ export class MetaEventDetector {
       chain
     );
 
+    console.log(`[${timestamp()}] 📈 Result: ${aggregation}=${aggregatedValue}`);
+
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
     const triggered = this.evaluateCondition(aggregatedValue, config.condition.operator, threshold);
 
@@ -242,6 +258,11 @@ export class MetaEventDetector {
     const aggregation = config.aggregation as Exclude<typeof config.aggregation, 'count'>;
     const contracts = config.contracts ?? (config.contract_address ? [config.contract_address] : undefined);
     const chain = config.chain ?? 'ethereum';
+
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - windowMinutes * 60 * 1000);
+    console.log(`[${timestamp()}] 🔎 Query: type=net_aggregate event=${config.event_type} chain=${chain} window=${windowMinutes}min`);
+    console.log(`[${timestamp()}]    Time range: ${windowStart.toISOString()} to ${now.toISOString()}`);
 
     // If multiple contracts, check each
     if (contracts && contracts.length > 1) {
@@ -296,6 +317,8 @@ export class MetaEventDetector {
       chain,
       config.market_id
     );
+
+    console.log(`[${timestamp()}] 📈 Result: netValue=${netValue} (${config.positive_event_type} - ${config.negative_event_type})`);
 
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
     const triggered = this.evaluateCondition(netValue, config.condition.operator, threshold);

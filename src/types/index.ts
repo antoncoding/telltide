@@ -102,10 +102,10 @@ export type WebhookPayload = {
   triggered_at: string;
   meta_event: {
     type: string;
-    condition_met: boolean;
     aggregated_value?: number;
     threshold?: number;
     window: string;
     triggered_by_contract?: string; // Which contract triggered (if multiple)
   };
+  events: Event[];
 };

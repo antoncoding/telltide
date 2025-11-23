@@ -48,10 +48,12 @@ class MetaEventWorker {
           );
 
           if (lastNotification) {
-            const cooldownMs = (subscription.cooldown_minutes ?? 1) * 60 * 1000;
+            const cooldownMs = 20 * 1000; // Fixed 20 seconds for demo
             const timeSinceLastNotification = Date.now() - lastNotification.getTime();
             if (timeSinceLastNotification < cooldownMs) {
-              continue; // Silent cooldown
+              const remainingSeconds = Math.ceil((cooldownMs - timeSinceLastNotification) / 1000);
+              console.log(`[${timestamp()}] ⏸️  "${subscription.name}" in cooldown (${remainingSeconds}s remaining)`);
+              continue;
             }
           }
 
@@ -83,18 +85,21 @@ class MetaEventWorker {
             console.log(`   Webhook: ${subscription.webhook_url}`);
             console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
+            // Fetch relevant events
+            const events = await this.detector.getRelevantEvents(subscription.meta_event_config);
+
             const payload: WebhookPayload = {
               subscription_id: subscription.id,
               subscription_name: subscription.name,
               triggered_at: new Date().toISOString(),
               meta_event: {
                 type: subscription.meta_event_config.type,
-                condition_met: true,
                 aggregated_value: result.aggregatedValue,
                 threshold: result.threshold,
                 window: result.window,
                 triggered_by_contract: result.triggeredByContract,
               },
+              events,
             };
 
             notifications.push({
