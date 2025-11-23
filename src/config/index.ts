@@ -43,7 +43,7 @@ export const config: Config = {
     host: process.env.API_HOST ?? 'localhost',
   },
   worker: {
-    intervalSeconds: parseInt(process.env.WORKER_INTERVAL_SECONDS ?? '30', 10),
+    intervalSeconds: parseInt(process.env.WORKER_INTERVAL_SECONDS ?? '10', 10),
   },
   chains: {
     ethereum: {

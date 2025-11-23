@@ -267,8 +267,23 @@ export class MetaEventDetector {
     // If multiple contracts, check each
     if (contracts && contracts.length > 1) {
       for (const contract of contracts) {
-        const netValue = await eventsRepository.getNetAggregatedValue(
+        // Get positive value (e.g., supply, borrow)
+        const positiveValue = await eventsRepository.getAggregatedValue(
           config.positive_event_type,
+          config.field,
+          aggregation,
+          windowMinutes,
+          undefined,
+          contract,
+          config.from_address,
+          config.to_address,
+          config.lookback_blocks,
+          chain,
+          config.market_id
+        );
+
+        // Get negative value (e.g., withdraw, repay)
+        const negativeValue = await eventsRepository.getAggregatedValue(
           config.negative_event_type,
           config.field,
           aggregation,
@@ -281,6 +296,10 @@ export class MetaEventDetector {
           chain,
           config.market_id
         );
+
+        const netValue = positiveValue - negativeValue;
+
+        console.log(`[${timestamp()}] 📈 Result: netValue=${netValue}`);
 
         const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
         const triggered = this.evaluateCondition(netValue, config.condition.operator, threshold);
@@ -303,8 +322,23 @@ export class MetaEventDetector {
     }
 
     // Single or no contract
-    const netValue = await eventsRepository.getNetAggregatedValue(
+    // Get positive value (e.g., supply, borrow)
+    const positiveValue = await eventsRepository.getAggregatedValue(
       config.positive_event_type,
+      config.field,
+      aggregation,
+      windowMinutes,
+      contracts,
+      config.contract_address,
+      config.from_address,
+      config.to_address,
+      config.lookback_blocks,
+      chain,
+      config.market_id
+    );
+
+    // Get negative value (e.g., withdraw, repay)
+    const negativeValue = await eventsRepository.getAggregatedValue(
       config.negative_event_type,
       config.field,
       aggregation,
@@ -318,7 +352,9 @@ export class MetaEventDetector {
       config.market_id
     );
 
-    console.log(`[${timestamp()}] 📈 Result: netValue=${netValue} (${config.positive_event_type} - ${config.negative_event_type})`);
+    const netValue = positiveValue - negativeValue;
+
+    console.log(`[${timestamp()}] 📈 Result: netValue=${netValue}`);
 
     const threshold = typeof config.condition.value === 'number' ? config.condition.value : 0;
     const triggered = this.evaluateCondition(netValue, config.condition.operator, threshold);
@@ -334,14 +370,49 @@ export class MetaEventDetector {
   async getRelevantEvents(config: MetaEventConfig, limit = 100) {
     const windowMinutes = this.parseWindow(config.window);
     const contracts = config.contracts ?? (config.contract_address ? [config.contract_address] : undefined);
+    const chain = config.chain ?? 'ethereum';
 
+    // For net_aggregate, fetch BOTH positive and negative events
+    if (config.type === 'net_aggregate' && config.positive_event_type && config.negative_event_type) {
+      const [positiveEvents, negativeEvents] = await Promise.all([
+        eventsRepository.getEventsByTimeWindow(
+          config.positive_event_type,
+          windowMinutes,
+          contracts,
+          config.contract_address,
+          config.from_address,
+          config.to_address,
+          chain,
+          config.market_id
+        ),
+        eventsRepository.getEventsByTimeWindow(
+          config.negative_event_type,
+          windowMinutes,
+          contracts,
+          config.contract_address,
+          config.from_address,
+          config.to_address,
+          chain,
+          config.market_id
+        ),
+      ]);
+
+      // Combine and sort by timestamp descending
+      return [...positiveEvents, ...negativeEvents].sort(
+        (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+      );
+    }
+
+    // For other types, fetch single event type
     return eventsRepository.getEventsByTimeWindow(
       config.event_type,
       windowMinutes,
       contracts,
       config.contract_address,
       config.from_address,
-      config.to_address
+      config.to_address,
+      chain,
+      config.market_id
     );
   }
 }

@@ -103,7 +103,8 @@ export const eventsRepository = {
     contractAddress?: string,
     fromAddress?: string,
     toAddress?: string,
-    chain?: string
+    chain?: string,
+    marketId?: string
   ): Promise<Event[]> {
     let whereClause = 'event_type = $1 AND timestamp >= NOW() - INTERVAL \'1 minute\' * $2';
     const params: unknown[] = [eventType, windowMinutes];
@@ -129,6 +130,11 @@ export const eventsRepository = {
     if (toAddress) {
       whereClause += ` AND to_address = $${params.length + 1}`;
       params.push(toAddress.toLowerCase());
+    }
+
+    if (marketId) {
+      whereClause += ` AND data->>'market_id' = $${params.length + 1}`;
+      params.push(marketId);
     }
 
     const result = await query<Event>(
